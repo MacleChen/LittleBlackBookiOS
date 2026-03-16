@@ -67,11 +67,14 @@ extension ReaderSettings {
 @MainActor
 final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigatorDelegate {
     @Published var currentProgress: Double = 0
+    @Published var currentLocator: Locator?
+    @Published var currentPosition: Int = 0
+    @Published var totalPositions: Int = 0
 
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
-        if let p = locator.locations.totalProgression {
-            DispatchQueue.main.async { self.currentProgress = p }
-        }
+        currentLocator = locator
+        if let p = locator.locations.totalProgression { currentProgress = p }
+        if let pos = locator.locations.position { currentPosition = pos }
     }
 
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
@@ -174,8 +177,13 @@ struct EPUBReaderView: View {
     private var bottomBar: some View {
         HStack {
             Spacer()
-            Text("\(Int(navDelegate.currentProgress * 100))%")
-                .font(.system(size: 14, weight: .semibold).monospacedDigit())
+            if navDelegate.totalPositions > 0 {
+                Text("\(navDelegate.currentPosition) / \(navDelegate.totalPositions)")
+                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
+            } else {
+                Text("\(Int(navDelegate.currentProgress * 100))%")
+                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
+            }
             Spacer()
         }
         .padding(.vertical, 10)
@@ -229,15 +237,27 @@ struct EPUBReaderView: View {
                 allowUserInteraction: false
             ).get()
 
-            // 3. Create navigator (no HTTP server needed in Readium 3.x)
+            // 3. Compute total page count
+            let positionsByChapter = await publication.positionsByReadingOrder()
+            let total = positionsByChapter.flatMap { $0 }.count
+
+            // 4. Restore saved locator (if any)
+            let savedLocator: Locator? = {
+                guard let data = UserDefaults.standard.data(forKey: "locator_\(book.id)"),
+                      let loc = try? JSONDecoder().decode(Locator.self, from: data) else { return nil }
+                return loc
+            }()
+
+            // 5. Create navigator (no HTTP server needed in Readium 3.x)
             let vc = try EPUBNavigatorViewController(
                 publication: publication,
-                initialLocation: nil,
+                initialLocation: savedLocator,
                 config: .init(preferences: settings.readiumPreferences)
             )
             vc.delegate = navDelegate
 
             await MainActor.run {
+                navDelegate.totalPositions = total
                 navDelegate.currentProgress = book.readingProgress
                 navigatorVC = vc
             }
@@ -249,6 +269,11 @@ struct EPUBReaderView: View {
     // ── Save ──────────────────────────────────────────────────────────────────
 
     private func save() {
+        // Persist locator for position restore
+        if let locator = navDelegate.currentLocator,
+           let data = try? JSONEncoder().encode(locator) {
+            UserDefaults.standard.set(data, forKey: "locator_\(book.id)")
+        }
         var b = book
         b.readingProgress = navDelegate.currentProgress
         b.lastReadDate    = Date()
