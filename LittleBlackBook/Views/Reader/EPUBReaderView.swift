@@ -4,7 +4,7 @@ import ReadiumStreamer
 import ReadiumNavigator
 
 // ReadiumNavigator also exports a `Color` type; pin this file's Color to SwiftUI.
-private typealias Color = SwiftUI.Color
+typealias Color = SwiftUI.Color
 
 // MARK: - Settings
 
