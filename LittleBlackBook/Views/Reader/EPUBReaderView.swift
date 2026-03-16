@@ -238,14 +238,17 @@ struct EPUBReaderView: View {
             ).get()
 
             // 3. Compute total page count
-            let positionsByChapter = await publication.positionsByReadingOrder()
-            let total = positionsByChapter.flatMap { $0 }.count
+            let total: Int
+            if let positions = try? await publication.positionsByReadingOrder().get() {
+                total = positions.flatMap { $0 }.count
+            } else {
+                total = 0
+            }
 
             // 4. Restore saved locator (if any)
             let savedLocator: Locator? = {
-                guard let data = UserDefaults.standard.data(forKey: "locator_\(book.id)"),
-                      let loc = try? JSONDecoder().decode(Locator.self, from: data) else { return nil }
-                return loc
+                guard let json = UserDefaults.standard.string(forKey: "locator_\(book.id)") else { return nil }
+                return try? Locator(jsonString: json)
             }()
 
             // 5. Create navigator (no HTTP server needed in Readium 3.x)
@@ -271,8 +274,8 @@ struct EPUBReaderView: View {
     private func save() {
         // Persist locator for position restore
         if let locator = navDelegate.currentLocator,
-           let data = try? JSONEncoder().encode(locator) {
-            UserDefaults.standard.set(data, forKey: "locator_\(book.id)")
+           let json = locator.jsonString {
+            UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
         }
         var b = book
         b.readingProgress = navDelegate.currentProgress
