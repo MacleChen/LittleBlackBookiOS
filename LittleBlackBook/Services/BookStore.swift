@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 import Combine
 
 class BookStore: ObservableObject {
@@ -58,7 +57,8 @@ class BookStore: ObservableObject {
 
     // MARK: - Book CRUD
 
-    func addBook(from sourceURL: URL, category: BookCategory? = nil) throws -> Book {
+    @discardableResult
+    func addBook(from sourceURL: URL, category: BookCategory? = nil) async throws -> Book {
         let fm = FileManager.default
         let destDir = fm.documentsDirectory.appendingPathComponent("Books")
         var destName = sourceURL.lastPathComponent
@@ -76,7 +76,7 @@ class BookStore: ObservableObject {
 
         try fm.copyItem(at: sourceURL, to: destURL)
 
-        let meta = EPUBParser.parse(url: destURL)
+        let meta = await EPUBParser.parse(url: destURL)
 
         // Save cover
         var coverName: String? = nil
@@ -96,8 +96,10 @@ class BookStore: ObservableObject {
             coverImageName: coverName
         )
 
-        books.append(book)
-        saveBooks()
+        await MainActor.run {
+            books.append(book)
+            saveBooks()
+        }
         return book
     }
 

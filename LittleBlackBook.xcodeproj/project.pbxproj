@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		679FFF2D2F63A8B800FEB1FF /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = BA0000000000000000000001 /* ZIPFoundation */; };
 		BB0000000000000000000005 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000002 /* ReadiumShared */; };
 		BB0000000000000000000006 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000003 /* ReadiumStreamer */; };
 		BB0000000000000000000007 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000004 /* ReadiumNavigator */; };
@@ -28,7 +27,6 @@
 		AA000000000000000000000F /* BookStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000F /* BookStore.swift */; };
 		AA0000000000000000000010 /* Color+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* Color+Extensions.swift */; };
 		AA0000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* Assets.xcassets */; };
-		AA0000000000000000000013 /* EPUBExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* EPUBExtractor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,7 +46,6 @@
 		AB000000000000000000000D /* EPUBReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReaderView.swift; sourceTree = "<group>"; };
 		AB000000000000000000000E /* EPUBParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBParser.swift; sourceTree = "<group>"; };
 		AB000000000000000000000F /* BookStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookStore.swift; sourceTree = "<group>"; };
-		AB0000000000000000000013 /* EPUBExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBExtractor.swift; sourceTree = "<group>"; };
 		AB0000000000000000000010 /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
 		AB0000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB0000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -59,7 +56,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				679FFF2D2F63A8B800FEB1FF /* ZIPFoundation in Frameworks */,
 				BB0000000000000000000005 /* ReadiumShared in Frameworks */,
 				BB0000000000000000000006 /* ReadiumStreamer in Frameworks */,
 				BB0000000000000000000007 /* ReadiumNavigator in Frameworks */,
@@ -134,7 +130,6 @@
 			children = (
 				AB000000000000000000000E /* EPUBParser.swift */,
 				AB000000000000000000000F /* BookStore.swift */,
-				AB0000000000000000000013 /* EPUBExtractor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -216,7 +211,6 @@
 			);
 			name = LittleBlackBook;
 			packageProductDependencies = (
-				BA0000000000000000000001 /* ZIPFoundation */,
 				BB0000000000000000000002 /* ReadiumShared */,
 				BB0000000000000000000003 /* ReadiumStreamer */,
 				BB0000000000000000000004 /* ReadiumNavigator */,
@@ -251,7 +245,6 @@
 			);
 			mainGroup = AD0000000000000000000001;
 			packageReferences = (
-				BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 				BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 			);
 			productRefGroup = AD000000000000000000000F /* Products */;
@@ -295,7 +288,6 @@
 				AA000000000000000000000E /* EPUBParser.swift in Sources */,
 				AA000000000000000000000F /* BookStore.swift in Sources */,
 				AA0000000000000000000010 /* Color+Extensions.swift in Sources */,
-				AA0000000000000000000013 /* EPUBExtractor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -494,14 +486,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.9.0;
-			};
-		};
 		BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/readium/swift-toolkit.git";
@@ -513,11 +497,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		BA0000000000000000000001 /* ZIPFoundation */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
-			productName = ZIPFoundation;
-		};
 		BB0000000000000000000002 /* ReadiumShared */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */;

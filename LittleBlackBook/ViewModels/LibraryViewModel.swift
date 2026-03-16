@@ -55,12 +55,14 @@ class LibraryViewModel: ObservableObject {
 
     func importBook(from url: URL) {
         let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        do {
-            _ = try store.addBook(from: url, category: selectedCategory)
-            importError = nil
-        } catch {
-            importError = error.localizedDescription
+        Task { @MainActor in
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            do {
+                try await store.addBook(from: url, category: selectedCategory)
+                importError = nil
+            } catch {
+                importError = error.localizedDescription
+            }
         }
     }
 
