@@ -10,7 +10,22 @@ struct EPUBMetadata {
     var coverImage: UIImage?
 }
 
-class EPUBParser {
+/// Parses EPUB metadata (title, author, description, cover) using Readium.
+/// Renamed to `EPUBMetadataParser` to avoid conflict with `ReadiumStreamer.EPUBParser`.
+class EPUBMetadataParser {
+
+    private static func makeOpener() -> (AssetRetriever, PublicationOpener) {
+        let httpClient = DefaultHTTPClient()
+        let assetRetriever = AssetRetriever(httpClient: httpClient)
+        let publicationOpener = PublicationOpener(
+            parser: DefaultPublicationParser(
+                httpClient: httpClient,
+                assetRetriever: assetRetriever,
+                pdfFactory: DefaultPDFDocumentFactory()
+            )
+        )
+        return (assetRetriever, publicationOpener)
+    }
 
     static func parse(url: URL) async -> EPUBMetadata {
         let fallback = EPUBMetadata(
@@ -20,8 +35,16 @@ class EPUBParser {
             coverImage: nil
         )
 
-        guard let publication = try? await Streamer().open(
-            asset: FileAsset(url: url),
+        guard let fileURL = FileURL(url: url) else { return fallback }
+
+        let (assetRetriever, publicationOpener) = makeOpener()
+
+        guard case .success(let asset) = await assetRetriever.retrieve(url: fileURL) else {
+            return fallback
+        }
+
+        guard case .success(let publication) = await publicationOpener.open(
+            asset: asset,
             allowUserInteraction: false
         ) else {
             return fallback
@@ -30,7 +53,7 @@ class EPUBParser {
         let title  = publication.metadata.title.nilIfEmpty ?? fallback.title
         let author = publication.metadata.authors.first?.name.nilIfEmpty ?? fallback.author
         let desc   = publication.metadata.description ?? ""
-        let cover  = publication.cover   // UIImage? from ReadiumShared
+        let cover  = try? await publication.cover().get()
 
         return EPUBMetadata(title: title, author: author, description: desc, coverImage: cover)
     }

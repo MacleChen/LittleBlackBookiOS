@@ -41,10 +41,11 @@ extension ReaderSettings {
         )
     }
 
-    private var readiumTheme: EPUBPreferences.Theme {
+    // Theme is a top-level enum in ReadiumNavigator (not nested in EPUBPreferences)
+    private var readiumTheme: Theme {
         switch theme {
-        case .white:       return .light
-        case .sepia:       return .sepia
+        case .white:        return .light
+        case .sepia:        return .sepia
         case .dark, .night: return .dark
         }
     }
@@ -52,7 +53,7 @@ extension ReaderSettings {
     private var readiumFontFamily: FontFamily? {
         switch font {
         case .system:  return nil
-        case .serif:   return FontFamily("Georgia")
+        case .serif:   return FontFamily(rawValue: "Georgia")
         case .rounded: return nil
         }
     }
@@ -198,34 +199,39 @@ struct EPUBReaderView: View {
     // ── Load ──────────────────────────────────────────────────────────────────
 
     private func loadBook() async {
+        // Readium 3.x: AssetRetriever + PublicationOpener replaces old Streamer API
+        let httpClient     = DefaultHTTPClient()
+        let assetRetriever = AssetRetriever(httpClient: httpClient)
+        let opener = PublicationOpener(
+            parser: DefaultPublicationParser(
+                httpClient: httpClient,
+                assetRetriever: assetRetriever,
+                pdfFactory: DefaultPDFDocumentFactory()
+            )
+        )
+
         do {
-            // 1. Open publication
-            let asset = FileAsset(url: book.fileURL)
-            let publication = try await Streamer().open(
+            guard let fileURL = FileURL(url: book.fileURL) else {
+                await MainActor.run { loadError = "无法解析文件路径" }
+                return
+            }
+
+            // 1. Retrieve asset
+            let asset = try await assetRetriever.retrieve(url: fileURL).get()
+
+            // 2. Open as Publication
+            let publication = try await opener.open(
                 asset: asset,
                 allowUserInteraction: false
-            )
+            ).get()
 
-            // 2. Build navigator
-            let config = EPUBNavigatorViewController.Configuration(
-                preferences: settings.readiumPreferences
-            )
+            // 3. Create navigator (no HTTP server needed in Readium 3.x)
             let vc = try EPUBNavigatorViewController(
                 publication: publication,
-                config: config
+                initialLocation: nil,
+                config: .init(preferences: settings.readiumPreferences)
             )
             vc.delegate = navDelegate
-
-            // 3. Restore reading position
-            let saved = book.readingProgress
-            if saved > 0, let link = publication.readingOrder.first {
-                let locator = Locator(
-                    href: link.href,
-                    mediaType: link.mediaType ?? MediaType.html,
-                    locations: .init(totalProgression: saved)
-                )
-                await vc.go(to: locator)
-            }
 
             await MainActor.run {
                 navDelegate.currentProgress = book.readingProgress

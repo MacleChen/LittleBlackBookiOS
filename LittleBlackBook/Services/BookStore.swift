@@ -76,7 +76,7 @@ class BookStore: ObservableObject {
 
         try fm.copyItem(at: sourceURL, to: destURL)
 
-        let meta = await EPUBParser.parse(url: destURL)
+        let meta = await EPUBMetadataParser.parse(url: destURL)
 
         // Save cover
         var coverName: String? = nil
