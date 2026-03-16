@@ -9,9 +9,10 @@ typealias Color = SwiftUI.Color
 // MARK: - Settings
 
 class ReaderSettings: ObservableObject {
-    @AppStorage("r_fontSize") var fontSize: Double  = 20
-    @AppStorage("r_theme")    var themeRaw: String  = ReaderTheme.white.rawValue
-    @AppStorage("r_font")     var fontRaw:  String  = ReaderFont.system.rawValue
+    @AppStorage("r_fontSize")   var fontSize:    Double = 20
+    @AppStorage("r_lineHeight") var lineHeight:  Double = 1.5
+    @AppStorage("r_theme")      var themeRaw:    String = ReaderTheme.white.rawValue
+    @AppStorage("r_font")       var fontRaw:     String = ReaderFont.system.rawValue
     var theme: ReaderTheme { get { .init(rawValue: themeRaw) ?? .white } set { themeRaw = newValue.rawValue } }
     var font:  ReaderFont  { get { .init(rawValue: fontRaw)  ?? .system } set { fontRaw  = newValue.rawValue } }
 }
@@ -38,13 +39,13 @@ enum ReaderFont: String, CaseIterable {
 extension ReaderSettings {
     var readiumPreferences: EPUBPreferences {
         EPUBPreferences(
-            fontFamily: readiumFontFamily,
-            fontSize:   fontSize / 20.0,   // 20 pt = 1.0 (100 %)
-            theme:      readiumTheme
+            fontFamily:  readiumFontFamily,
+            fontSize:    fontSize / 20.0,   // 20 pt = 1.0 (100 %)
+            lineHeight:  lineHeight,
+            theme:       readiumTheme
         )
     }
 
-    // Theme is a top-level enum in ReadiumNavigator (not nested in EPUBPreferences)
     private var readiumTheme: Theme {
         switch theme {
         case .white:        return .light
@@ -70,11 +71,18 @@ final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigat
     @Published var currentLocator: Locator?
     @Published var currentPosition: Int = 0
     @Published var totalPositions: Int = 0
+    @Published var isBookFinished: Bool = false
 
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         currentLocator = locator
         if let p = locator.locations.totalProgression { currentProgress = p }
-        if let pos = locator.locations.position { currentPosition = pos }
+        if let pos = locator.locations.position {
+            currentPosition = pos
+            // Mark finished when reaching the last page
+            if totalPositions > 0, pos >= totalPositions {
+                isBookFinished = true
+            }
+        }
     }
 
     func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
@@ -101,13 +109,14 @@ struct EPUBReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var book: Book
 
-    @StateObject private var settings       = ReaderSettings()
-    @StateObject private var navDelegate    = EPUBReaderNavigatorDelegate()
+    @StateObject private var settings    = ReaderSettings()
+    @StateObject private var navDelegate = EPUBReaderNavigatorDelegate()
 
-    @State private var navigatorVC: EPUBNavigatorViewController?
-    @State private var loadError:   String?
-    @State private var showControls: Bool = true
-    @State private var showSettings: Bool = false
+    @State private var navigatorVC:      EPUBNavigatorViewController?
+    @State private var openedPublication: Publication?
+    @State private var loadError:        String?
+    @State private var showControls:     Bool = true
+    @State private var showSettings:     Bool = false
 
     var body: some View {
         ZStack {
@@ -139,8 +148,9 @@ struct EPUBReaderView: View {
         .sheet(isPresented: $showSettings) {
             ReaderSettingsPanel(settings: settings, onChanged: {
                 navigatorVC?.submitPreferences(settings.readiumPreferences)
+                Task { await recomputePositions() }
             })
-            .presentationDetents([.height(310)])
+            .presentationDetents([.height(420)])
             .presentationDragIndicator(.visible)
         }
     }
@@ -211,7 +221,6 @@ struct EPUBReaderView: View {
     // ── Load ──────────────────────────────────────────────────────────────────
 
     private func loadBook() async {
-        // Readium 3.x: AssetRetriever + PublicationOpener replaces old Streamer API
         let httpClient     = DefaultHTTPClient()
         let assetRetriever = AssetRetriever(httpClient: httpClient)
         let opener = PublicationOpener(
@@ -228,16 +237,13 @@ struct EPUBReaderView: View {
                 return
             }
 
-            // 1. Retrieve asset
             let asset = try await assetRetriever.retrieve(url: fileURL).get()
-
-            // 2. Open as Publication
             let publication = try await opener.open(
                 asset: asset,
                 allowUserInteraction: false
             ).get()
 
-            // 3. Compute total page count
+            // Compute total page count
             let total: Int
             if let positions = try? await publication.positionsByReadingOrder().get() {
                 total = positions.flatMap { $0 }.count
@@ -245,13 +251,12 @@ struct EPUBReaderView: View {
                 total = 0
             }
 
-            // 4. Restore saved locator (if any)
+            // Restore saved locator
             let savedLocator: Locator? = {
                 guard let json = UserDefaults.standard.string(forKey: "locator_\(book.id)") else { return nil }
                 return try? Locator(jsonString: json)
             }()
 
-            // 5. Create navigator (no HTTP server needed in Readium 3.x)
             let vc = try EPUBNavigatorViewController(
                 publication: publication,
                 initialLocation: savedLocator,
@@ -260,6 +265,7 @@ struct EPUBReaderView: View {
             vc.delegate = navDelegate
 
             await MainActor.run {
+                openedPublication          = publication
                 navDelegate.totalPositions = total
                 navDelegate.currentProgress = book.readingProgress
                 navigatorVC = vc
@@ -269,10 +275,19 @@ struct EPUBReaderView: View {
         }
     }
 
+    // ── Recompute positions after preference change ────────────────────────────
+
+    private func recomputePositions() async {
+        guard let pub = openedPublication else { return }
+        if let positions = try? await pub.positionsByReadingOrder().get() {
+            let total = positions.flatMap { $0 }.count
+            await MainActor.run { navDelegate.totalPositions = total }
+        }
+    }
+
     // ── Save ──────────────────────────────────────────────────────────────────
 
     private func save() {
-        // Persist locator for position restore
         if let locator = navDelegate.currentLocator,
            let json = locator.jsonString {
             UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
@@ -280,6 +295,10 @@ struct EPUBReaderView: View {
         var b = book
         b.readingProgress = navDelegate.currentProgress
         b.lastReadDate    = Date()
+        if navDelegate.isBookFinished, !b.isFinished {
+            b.isFinished   = true
+            b.finishedDate = Date()
+        }
         store.updateBook(b)
         book = b
     }
@@ -290,14 +309,17 @@ struct EPUBReaderView: View {
 struct ReaderSettingsPanel: View {
     @ObservedObject var settings: ReaderSettings
     var onChanged: (() -> Void)? = nil
-    private let sizes: [Double] = [14, 16, 18, 20, 22, 24, 26]
+    private let sizes:       [Double] = [14, 16, 18, 20, 22, 24, 26]
+    private let lineHeights: [Double] = [1.0, 1.2, 1.5, 1.8, 2.0]
+    private let lineHeightLabels = [1.0: "紧凑", 1.2: "标准", 1.5: "舒适", 1.8: "宽松", 2.0: "超宽"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             Capsule().fill(Color(.tertiaryLabel)).frame(width: 36, height: 4)
                 .frame(maxWidth: .infinity).padding(.top, 10)
             Text("阅读设置").font(.headline).frame(maxWidth: .infinity, alignment: .center)
 
+            // ── Font size ──
             sectionHeader("字体大小", icon: "textformat.size")
             HStack(spacing: 6) {
                 stepBtn(icon: "minus") { step(-1) }.disabled(settings.fontSize <= sizes.first!)
@@ -320,6 +342,23 @@ struct ReaderSettingsPanel: View {
                 stepBtn(icon: "plus") { step(+1) }.disabled(settings.fontSize >= sizes.last!)
             }
 
+            // ── Line height ──
+            sectionHeader("行间距", icon: "text.alignleft")
+            HStack(spacing: 6) {
+                ForEach(lineHeights, id: \.self) { h in
+                    Button { settings.lineHeight = h; onChanged?() } label: {
+                        Text(lineHeightLabels[h] ?? "\(h)")
+                            .font(.system(size: 12, weight: settings.lineHeight == h ? .bold : .regular))
+                            .frame(maxWidth: .infinity).padding(.vertical, 7)
+                            .background(settings.lineHeight == h
+                                        ? Color.accentColor : Color(.tertiarySystemFill))
+                            .foregroundStyle(settings.lineHeight == h ? .white : .primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }.buttonStyle(.plain)
+                }
+            }
+
+            // ── Theme ──
             sectionHeader("主题背景", icon: "circle.lefthalf.filled")
             HStack(spacing: 0) {
                 ForEach(ReaderTheme.allCases, id: \.self) { t in
@@ -340,6 +379,7 @@ struct ReaderSettingsPanel: View {
                 }
             }
 
+            // ── Font ──
             sectionHeader("字体", icon: "character")
             HStack(spacing: 8) {
                 ForEach(ReaderFont.allCases, id: \.self) { f in

@@ -12,6 +12,8 @@ struct Book: Identifiable, Codable, Equatable {
     var addedDate: Date = Date()
     var lastReadDate: Date?
     var readingProgress: Double = 0.0  // 0.0 ~ 1.0
+    var isFinished: Bool = false
+    var finishedDate: Date?
     var isFavorite: Bool = false
     var tags: [String] = []
 
