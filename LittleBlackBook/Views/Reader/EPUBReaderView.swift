@@ -64,7 +64,8 @@ extension ReaderSettings {
 
 // MARK: - Navigator Delegate
 
-final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, NavigatorDelegate {
+@MainActor
+final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigatorDelegate {
     @Published var currentProgress: Double = 0
 
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
