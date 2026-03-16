@@ -21,7 +21,8 @@ build/
 .build/
 .swiftpm/
 Packages/
-Package.resolved
+# Root-level Package.resolved (Swift packages), but NOT the one inside xcworkspace
+/Package.resolved
 
 # CocoaPods
 Pods/

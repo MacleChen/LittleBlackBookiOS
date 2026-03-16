@@ -1,6 +1,7 @@
 import Foundation
 import ReadiumShared
 import ReadiumStreamer
+import UIKit
 
 struct EPUBMetadata {
     var title: String
