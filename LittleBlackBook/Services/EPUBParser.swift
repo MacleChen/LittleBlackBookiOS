@@ -50,7 +50,7 @@ class EPUBMetadataParser {
             return fallback
         }
 
-        let title  = publication.metadata.title.nilIfEmpty ?? fallback.title
+        let title  = publication.metadata.title?.nilIfEmpty ?? fallback.title
         let author = publication.metadata.authors.first?.name.nilIfEmpty ?? fallback.author
         let desc   = publication.metadata.description ?? ""
         let cover  = try? await publication.cover().get()

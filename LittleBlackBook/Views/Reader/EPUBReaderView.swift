@@ -3,6 +3,9 @@ import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
 
+// ReadiumNavigator also exports a `Color` type; pin this file's Color to SwiftUI.
+private typealias Color = SwiftUI.Color
+
 // MARK: - Settings
 
 class ReaderSettings: ObservableObject {
@@ -18,7 +21,7 @@ enum ReaderTheme: String, CaseIterable {
     var label: String { switch self { case .white:"白天"; case .sepia:"护眼"; case .dark:"深色"; case .night:"夜间" } }
     var bg: String    { switch self { case .white:"#FFFFFF"; case .sepia:"#F5EDD6"; case .dark:"#1C1C1E"; case .night:"#000000" } }
     var fg: String    { switch self { case .white:"#1A1A1A"; case .sepia:"#3B2A1A"; case .dark:"#E5E5E7"; case .night:"#CCCCCC" } }
-    var uiBG: Color   { switch self {
+    var uiBG: Color { switch self {
         case .white: .white;                case .sepia: Color(hex: "#F5EDD6")
         case .dark:  Color(hex: "#1C1C1E"); case .night: .black
     }}
