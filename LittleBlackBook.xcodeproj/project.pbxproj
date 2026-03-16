@@ -1,0 +1,506 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		679FFF2D2F63A8B800FEB1FF /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = BA0000000000000000000001 /* ZIPFoundation */; };
+		AA0000000000000000000001 /* LittleBlackBookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* LittleBlackBookApp.swift */; };
+		AA0000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000002 /* ContentView.swift */; };
+		AA0000000000000000000003 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000003 /* Book.swift */; };
+		AA0000000000000000000004 /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000004 /* Category.swift */; };
+		AA0000000000000000000005 /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000005 /* LibraryViewModel.swift */; };
+		AA0000000000000000000006 /* CategoriesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000006 /* CategoriesViewModel.swift */; };
+		AA0000000000000000000007 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000007 /* LibraryView.swift */; };
+		AA0000000000000000000008 /* BookCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000008 /* BookCardView.swift */; };
+		AA0000000000000000000009 /* CategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000009 /* CategoriesView.swift */; };
+		AA000000000000000000000A /* CategoryFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000A /* CategoryFormView.swift */; };
+		AA000000000000000000000B /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000B /* BookDetailView.swift */; };
+		AA000000000000000000000C /* BookEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000C /* BookEditView.swift */; };
+		AA000000000000000000000D /* EPUBReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000D /* EPUBReaderView.swift */; };
+		AA000000000000000000000E /* EPUBParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000E /* EPUBParser.swift */; };
+		AA000000000000000000000F /* BookStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000F /* BookStore.swift */; };
+		AA0000000000000000000010 /* Color+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* Color+Extensions.swift */; };
+		AA0000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* Assets.xcassets */; };
+		AA0000000000000000000013 /* EPUBExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* EPUBExtractor.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AB0000000000000000000000 /* LittleBlackBook.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LittleBlackBook.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000001 /* LittleBlackBookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LittleBlackBookApp.swift; sourceTree = "<group>"; };
+		AB0000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000003 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
+		AB0000000000000000000004 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
+		AB0000000000000000000005 /* LibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000006 /* CategoriesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesViewModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000007 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000008 /* BookCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCardView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000009 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
+		AB000000000000000000000A /* CategoryFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryFormView.swift; sourceTree = "<group>"; };
+		AB000000000000000000000B /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
+		AB000000000000000000000C /* BookEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookEditView.swift; sourceTree = "<group>"; };
+		AB000000000000000000000D /* EPUBReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBReaderView.swift; sourceTree = "<group>"; };
+		AB000000000000000000000E /* EPUBParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBParser.swift; sourceTree = "<group>"; };
+		AB000000000000000000000F /* BookStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookStore.swift; sourceTree = "<group>"; };
+		AB0000000000000000000013 /* EPUBExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPUBExtractor.swift; sourceTree = "<group>"; };
+		AB0000000000000000000010 /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
+		AB0000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB0000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AC0000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				679FFF2D2F63A8B800FEB1FF /* ZIPFoundation in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AD0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				AD0000000000000000000002 /* LittleBlackBook */,
+				AD000000000000000000000F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000002 /* LittleBlackBook */ = {
+			isa = PBXGroup;
+			children = (
+				AD0000000000000000000003 /* App */,
+				AD0000000000000000000004 /* Models */,
+				AD0000000000000000000005 /* ViewModels */,
+				AD0000000000000000000006 /* Views */,
+				AD0000000000000000000007 /* Services */,
+				AD0000000000000000000008 /* Extensions */,
+				AD0000000000000000000009 /* Resources */,
+			);
+			path = LittleBlackBook;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000001 /* LittleBlackBookApp.swift */,
+				AB0000000000000000000002 /* ContentView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000004 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000003 /* Book.swift */,
+				AB0000000000000000000004 /* Category.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000005 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000005 /* LibraryViewModel.swift */,
+				AB0000000000000000000006 /* CategoriesViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000006 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AD000000000000000000000A /* Library */,
+				AD000000000000000000000B /* Categories */,
+				AD000000000000000000000C /* Detail */,
+				AD000000000000000000000D /* Reader */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000007 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AB000000000000000000000E /* EPUBParser.swift */,
+				AB000000000000000000000F /* BookStore.swift */,
+				AB0000000000000000000013 /* EPUBExtractor.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000008 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000010 /* Color+Extensions.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000009 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000011 /* Assets.xcassets */,
+				AB0000000000000000000012 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000A /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000007 /* LibraryView.swift */,
+				AB0000000000000000000008 /* BookCardView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000B /* Categories */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000009 /* CategoriesView.swift */,
+				AB000000000000000000000A /* CategoryFormView.swift */,
+			);
+			path = Categories;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000C /* Detail */ = {
+			isa = PBXGroup;
+			children = (
+				AB000000000000000000000B /* BookDetailView.swift */,
+				AB000000000000000000000C /* BookEditView.swift */,
+			);
+			path = Detail;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000D /* Reader */ = {
+			isa = PBXGroup;
+			children = (
+				AB000000000000000000000D /* EPUBReaderView.swift */,
+			);
+			path = Reader;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000000 /* LittleBlackBook.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE0000000000000000000001 /* LittleBlackBook */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF0000000000000000000001 /* Build configuration list for PBXNativeTarget "LittleBlackBook" */;
+			buildPhases = (
+				AC0000000000000000000002 /* Sources */,
+				AC0000000000000000000001 /* Frameworks */,
+				AC0000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LittleBlackBook;
+			packageProductDependencies = (
+				BA0000000000000000000001 /* ZIPFoundation */,
+			);
+			productName = LittleBlackBook;
+			productReference = AB0000000000000000000000 /* LittleBlackBook.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AE0000000000000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					AE0000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = AF0000000000000000000002 /* Build configuration list for PBXProject "LittleBlackBook" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = zh_CN;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				zh_CN,
+				en,
+				Base,
+			);
+			mainGroup = AD0000000000000000000001;
+			packageReferences = (
+				BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
+			productRefGroup = AD000000000000000000000F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE0000000000000000000001 /* LittleBlackBook */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AC0000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000011 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AC0000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000001 /* LittleBlackBookApp.swift in Sources */,
+				AA0000000000000000000002 /* ContentView.swift in Sources */,
+				AA0000000000000000000003 /* Book.swift in Sources */,
+				AA0000000000000000000004 /* Category.swift in Sources */,
+				AA0000000000000000000005 /* LibraryViewModel.swift in Sources */,
+				AA0000000000000000000006 /* CategoriesViewModel.swift in Sources */,
+				AA0000000000000000000007 /* LibraryView.swift in Sources */,
+				AA0000000000000000000008 /* BookCardView.swift in Sources */,
+				AA0000000000000000000009 /* CategoriesView.swift in Sources */,
+				AA000000000000000000000A /* CategoryFormView.swift in Sources */,
+				AA000000000000000000000B /* BookDetailView.swift in Sources */,
+				AA000000000000000000000C /* BookEditView.swift in Sources */,
+				AA000000000000000000000D /* EPUBReaderView.swift in Sources */,
+				AA000000000000000000000E /* EPUBParser.swift in Sources */,
+				AA000000000000000000000F /* BookStore.swift in Sources */,
+				AA0000000000000000000010 /* Color+Extensions.swift in Sources */,
+				AA0000000000000000000013 /* EPUBExtractor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AF0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AF0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AF0000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = W394K7A46S;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LittleBlackBook/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yishuihuayuan.littleblackbook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AF0000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = W394K7A46S;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LittleBlackBook/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yishuihuayuan.littleblackbook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AF0000000000000000000001 /* Build configuration list for PBXNativeTarget "LittleBlackBook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF0000000000000000000005 /* Debug */,
+				AF0000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AF0000000000000000000002 /* Build configuration list for PBXProject "LittleBlackBook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF0000000000000000000003 /* Debug */,
+				AF0000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BA0000000000000000000001 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA0000000000000000000002 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AE0000000000000000000000 /* Project object */;
+}
