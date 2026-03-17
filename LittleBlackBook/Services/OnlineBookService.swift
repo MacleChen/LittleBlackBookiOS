@@ -185,10 +185,8 @@ actor OnlineBookService {
         if results.isEmpty { throw Err.noResults }
 
         return results.compactMap { book -> OnlineBook? in
-            // Prefer the direct cache URL — avoids Gutenberg's redirect that often 403s
-            let cacheURL = URL(string: "https://www.gutenberg.org/cache/epub/\(book.id)/pg\(book.id).epub")
-            let fallbackURL = book.formats["application/epub+zip"].flatMap { URL(string: $0) }
-            let epubURL = cacheURL ?? fallbackURL
+            // Use the API URL as-is; actual multi-URL retry happens at download time
+            let epubURL = book.formats["application/epub+zip"].flatMap { URL(string: $0) }
             guard epubURL != nil else { return nil }
             let coverURL = book.formats["image/jpeg"].flatMap { URL(string: $0) }
             let authors: [String] = (book.authors ?? []).map { a in
@@ -213,36 +211,115 @@ actor OnlineBookService {
     func downloadBook(book: OnlineBook) async throws -> URL {
         guard let downloadURL = book.downloadURL else { throw Err.noResults }
 
-        let (tmpFile, response) = try await performDownload(url: downloadURL)
-
-        // Handle HTTP errors with source-specific retry and messages
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            try? FileManager.default.removeItem(at: tmpFile)
-
-            if http.statusCode == 403 {
-                // Gutenberg: try the -images / non-images variant
-                if book.source == .gutenberg, let altURL = gutenbergAlternativeURL(downloadURL) {
-                    if let result = try? await retryDownload(url: altURL, book: book) { return result }
-                }
-                // Archive.org: try _epub.epub suffix variant
-                if book.source == .openLibrary {
-                    let s = downloadURL.absoluteString
-                    if let altURL = URL(string: s.hasSuffix(".epub")
-                                        ? String(s.dropLast(5)) + "_epub.epub" : s) {
-                        if let result = try? await retryDownload(url: altURL, book: book) { return result }
-                    }
-                }
-            }
-
-            throw Err.network(errorMessage(for: http.statusCode, source: book.source))
+        switch book.source {
+        case .gutenberg:
+            return try await downloadGutenberg(book: book, apiURL: downloadURL)
+        case .openLibrary:
+            return try await downloadArchiveOrg(book: book, hintURL: downloadURL)
+        case .douban:
+            throw Err.network("豆瓣图书不提供直接下载，请手动导入 EPUB 文件")
         }
-
-        return try finalize(tmpFile: tmpFile, book: book)
     }
 
-    // MARK: - Download helpers
+    // MARK: - Source-specific download strategies
 
-    private func performDownload(url: URL) async throws -> (URL, URLResponse) {
+    /// Gutenberg: try cache URLs in order (images → no-images → original API URL).
+    private func downloadGutenberg(book: OnlineBook, apiURL: URL) async throws -> URL {
+        // Extract numeric book ID from book.id ("1342") or from the API URL path
+        let gutenbergId: Int? = Int(book.id) ?? {
+            // URL looks like https://www.gutenberg.org/ebooks/1342.epub.images
+            let parts = apiURL.deletingPathExtension().lastPathComponent
+            return Int(parts.replacingOccurrences(of: ".epub", with: ""))
+        }()
+
+        var candidates: [URL] = []
+        if let gid = gutenbergId {
+            let base = "https://www.gutenberg.org/cache/epub/\(gid)/pg\(gid)"
+            candidates.append(contentsOf: [
+                URL(string: "\(base)-images.epub")!,   // most common
+                URL(string: "\(base).epub")!,           // no-images
+                URL(string: "\(base)-h.epub")!,         // HTML-based variant
+            ])
+        }
+        candidates.append(apiURL)   // original Gutendex URL (redirect) as last resort
+
+        var lastError: Error = Err.noResults
+        for url in candidates {
+            do {
+                let (tmp, resp) = try await performDownload(url: url,
+                                                            referer: "https://www.gutenberg.org/")
+                if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    return try finalize(tmpFile: tmp, book: book)
+                }
+                try? FileManager.default.removeItem(at: tmp)
+                if let http = resp as? HTTPURLResponse, http.statusCode == 403 { continue }
+                if let http = resp as? HTTPURLResponse, http.statusCode == 404 { continue }
+            } catch {
+                lastError = error
+            }
+        }
+        throw Err.network("Gutenberg 所有下载地址均失败，请前往 gutenberg.org 手动下载（\(lastError.localizedDescription)）")
+    }
+
+    /// Archive.org / Open Library: query the IA metadata API for the actual EPUB filename,
+    /// then download that exact file.
+    private func downloadArchiveOrg(book: OnlineBook, hintURL: URL) async throws -> URL {
+        // Extract IA identifier from URL: https://archive.org/download/{identifier}/...
+        let pathParts = hintURL.pathComponents   // ["", "download", "{id}", "{file}"]
+        guard pathParts.count >= 3, pathParts[1] == "download" else {
+            // Not an IA URL — try direct download
+            return try await directDownload(url: hintURL, book: book)
+        }
+        let identifier = pathParts[2]
+
+        // Fetch IA metadata to get real file list
+        let metaURL = URL(string: "https://archive.org/metadata/\(identifier)")!
+        var metaReq = URLRequest(url: metaURL)
+        metaReq.setValue("LittleBlackBook/1.0", forHTTPHeaderField: "User-Agent")
+        metaReq.timeoutInterval = 15
+
+        if let (metaData, _) = try? await URLSession.shared.data(for: metaReq),
+           let meta = try? JSONDecoder().decode(IAMetadataResp.self, from: metaData) {
+
+            // Prefer original-source epub; fall back to any epub
+            let epubFiles = (meta.files ?? []).filter {
+                $0.name.lowercased().hasSuffix(".epub")
+            }
+            let preferred = epubFiles.first(where: { $0.source == "original" })
+                         ?? epubFiles.first
+
+            if let name = preferred?.name {
+                let epubURL = URL(string: "https://archive.org/download/\(identifier)/\(name)")!
+                return try await directDownload(url: epubURL, book: book)
+            }
+
+            // No epub found in metadata
+            throw Err.network("此书在 Internet Archive 上没有 EPUB 文件（可能仅支持在线借阅）")
+        }
+
+        // Metadata fetch failed — fall back to hintURL
+        return try await directDownload(url: hintURL, book: book)
+    }
+
+    private func directDownload(url: URL, book: OnlineBook) async throws -> URL {
+        let (tmp, resp) = try await performDownload(url: url,
+                                                    referer: "https://archive.org/")
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            try? FileManager.default.removeItem(at: tmp)
+            let msg: String
+            switch http.statusCode {
+            case 403: msg = "此书需要登录 Internet Archive 账号才能借阅下载（403）"
+            case 404: msg = "文件不存在（404），该书可能已被移除"
+            default:  msg = "服务器返回 \(http.statusCode)，下载失败"
+            }
+            throw Err.network(msg)
+        }
+        return try finalize(tmpFile: tmp, book: book)
+    }
+
+    // MARK: - Shared helpers
+
+    private func performDownload(url: URL, referer: String? = nil) async throws -> (URL, URLResponse) {
         var req = URLRequest(url: url)
         req.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
@@ -250,53 +327,15 @@ actor OnlineBookService {
             forHTTPHeaderField: "User-Agent")
         req.setValue("application/epub+zip, application/pdf, */*;q=0.8",
                      forHTTPHeaderField: "Accept")
+        if let referer { req.setValue(referer, forHTTPHeaderField: "Referer") }
         req.timeoutInterval = 90
         return try await URLSession.shared.download(for: req)
-    }
-
-    private func retryDownload(url: URL, book: OnlineBook) async throws -> URL {
-        let (file, resp) = try await performDownload(url: url)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            try? FileManager.default.removeItem(at: file)
-            throw Err.noResults
-        }
-        return try finalize(tmpFile: file, book: book)
-    }
-
-    /// For a Gutenberg cache URL pg{id}.epub, try pg{id}-images.epub (and vice-versa).
-    private func gutenbergAlternativeURL(_ url: URL) -> URL? {
-        let s = url.absoluteString
-        if s.hasSuffix(".epub") && !s.hasSuffix("-images.epub") {
-            return URL(string: s.dropLast(5) + "-images.epub")
-        }
-        if s.hasSuffix("-images.epub") {
-            return URL(string: String(s.dropLast("-images.epub".count)) + ".epub")
-        }
-        return nil
-    }
-
-    private func errorMessage(for status: Int, source: OnlineBook.Source) -> String {
-        switch status {
-        case 403:
-            switch source {
-            case .gutenberg:
-                return "Gutenberg 拒绝访问（403）。该书可能有版权限制，请前往 gutenberg.org 手动下载"
-            case .openLibrary:
-                return "该书需要登录 Internet Archive 账号才能借阅下载（403）"
-            case .douban:
-                return "豆瓣图书不提供直接下载（403）"
-            }
-        case 404:
-            return "下载链接已失效（404），该书籍文件已不存在"
-        default:
-            return "服务器返回 \(status)，下载失败"
-        }
     }
 
     private func finalize(tmpFile: URL, book: OnlineBook) throws -> URL {
         let ext = book.format.lowercased() == "pdf" ? "pdf" : "epub"
 
-        // Validate magic bytes
+        // Validate magic bytes (ZIP = PK, PDF = %P)
         if let fh = FileHandle(forReadingAtPath: tmpFile.path) {
             let magic = fh.readData(ofLength: 4)
             fh.closeFile()
@@ -304,7 +343,7 @@ actor OnlineBookService {
             let isPDF  = magic.count >= 4 && magic[0] == 0x25 && magic[1] == 0x50
             guard isEPUB || isPDF else {
                 try? FileManager.default.removeItem(at: tmpFile)
-                throw Err.network("下载内容不是有效的 EPUB/PDF 文件（可能是版权限制或链接失效）")
+                throw Err.network("下载内容不是有效的 EPUB/PDF 文件（可能是版权保护或链接失效）")
             }
         }
 
@@ -319,6 +358,16 @@ actor OnlineBookService {
         try FileManager.default.moveItem(at: tmpFile, to: destURL)
         return destURL
     }
+}
+
+// MARK: - Internet Archive metadata models
+
+private struct IAMetadataResp: Codable {
+    let files: [IAFile]?
+}
+private struct IAFile: Codable {
+    let name: String
+    let source: String?   // "original" | "derivative" | "metadata"
 }
 
 // MARK: - Douban suggest models
