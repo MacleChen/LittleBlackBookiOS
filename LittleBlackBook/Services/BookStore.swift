@@ -76,7 +76,7 @@ class BookStore: ObservableObject {
 
         try fm.copyItem(at: sourceURL, to: destURL)
 
-        // Only use Readium parser for EPUB; other formats fall back to filename
+        // Use EPUB parser for .epub; other formats fall back to filename
         let ext = destURL.pathExtension.lowercased()
         let meta = (ext == "epub")
             ? await EPUBMetadataParser.parse(url: destURL)

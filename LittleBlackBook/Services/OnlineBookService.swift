@@ -206,8 +206,28 @@ actor OnlineBookService {
 
     func downloadBook(book: OnlineBook) async throws -> URL {
         guard let downloadURL = book.downloadURL else { throw Err.noResults }
-        let (tmpFile, _) = try await URLSession.shared.download(from: downloadURL)
+        let (tmpFile, response) = try await URLSession.shared.download(from: downloadURL)
+
+        // Reject HTTP errors
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            try? FileManager.default.removeItem(at: tmpFile)
+            throw Err.network("服务器返回 \(http.statusCode)，文件不可用")
+        }
+
         let ext = book.format.lowercased() == "pdf" ? "pdf" : "epub"
+
+        // Validate: EPUB/ZIP must start with PK magic bytes; PDF starts with %PDF
+        if let fh = FileHandle(forReadingAtPath: tmpFile.path) {
+            let magic = fh.readData(ofLength: 4)
+            fh.closeFile()
+            let isEPUB = magic.count >= 4 && magic[0] == 0x50 && magic[1] == 0x4B
+            let isPDF  = magic.count >= 4 && magic[0] == 0x25 && magic[1] == 0x50
+            guard isEPUB || isPDF else {
+                try? FileManager.default.removeItem(at: tmpFile)
+                throw Err.network("下载内容不是有效的 EPUB/PDF 文件（可能是版权限制或链接失效）")
+            }
+        }
+
         let safeName = book.title
             .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|"))
             .joined(separator: "_")

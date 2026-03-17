@@ -236,14 +236,27 @@ struct EPUBReaderView: View {
 
     private func loadBook() async {
         do {
+            // 1. File must exist
+            guard FileManager.default.fileExists(atPath: book.fileURL.path) else {
+                await MainActor.run { loadError = "书籍文件不存在，请重新导入" }
+                return
+            }
+            // 2. Must be a ZIP (magic bytes PK)
+            guard isZIPFile(at: book.fileURL) else {
+                await MainActor.run { loadError = "书籍文件格式不受支持或已损坏（非 EPUB/ZIP）" }
+                return
+            }
+
             let temp = FileManager.default.temporaryDirectory
                 .appendingPathComponent("epub_\(book.id)_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
-            try FileManager.default.unzipItem(at: book.fileURL, to: temp)
+
+            // 3. Extract using Archive entry-by-entry (more tolerant than unzipItem)
+            try extractArchive(from: book.fileURL, to: temp)
 
             let spine = try EPUBMetadataParser.extractSpine(from: temp)
             guard !spine.isEmpty else {
-                await MainActor.run { loadError = "无法解析书籍目录" }
+                await MainActor.run { loadError = "无法解析书籍目录结构，EPUB 格式可能不标准" }
                 return
             }
 
@@ -328,6 +341,40 @@ struct EPUBReaderView: View {
         store.updateBook(b)
         book = b
         dismiss()
+    }
+
+    // MARK: - ZIP helpers
+
+    /// Check if file starts with PK magic bytes (valid ZIP/EPUB).
+    private func isZIPFile(at url: URL) -> Bool {
+        guard let fh = FileHandle(forReadingAtPath: url.path) else { return false }
+        let magic = fh.readData(ofLength: 4)
+        fh.closeFile()
+        return magic.count >= 4 && magic[0] == 0x50 && magic[1] == 0x4B
+    }
+
+    /// Extract all ZIP entries to dest, skipping entries that fail individually.
+    private func extractArchive(from source: URL, to dest: URL) throws {
+        guard let archive = Archive(url: source, accessMode: .read) else {
+            throw NSError(domain: "EPUBReader", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "无法打开书籍文件（ZIP 格式错误）"])
+        }
+        let fm = FileManager.default
+        for entry in archive {
+            guard entry.type != .directory else { continue }
+            // Sanitise path: remove leading slashes, reject path-traversal
+            var path = entry.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            path = path.replacingOccurrences(of: "../", with: "")
+            guard !path.isEmpty else { continue }
+
+            let destFile = dest.appendingPathComponent(path)
+            try? fm.createDirectory(at: destFile.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true)
+            var data = Data()
+            // Use try? so a single bad entry doesn't abort the whole extraction
+            _ = try? archive.extract(entry) { data.append($0) }
+            if !data.isEmpty { try? data.write(to: destFile) }
+        }
     }
 
     private func cleanupTemp() {
