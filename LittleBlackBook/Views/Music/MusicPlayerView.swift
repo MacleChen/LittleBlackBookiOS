@@ -86,6 +86,17 @@ struct MusicPlayerView: View {
                     .padding(.horizontal, 32)
                     .padding(.top, 24)
 
+                    // Decrypting indicator
+                    if player.isDecrypting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("正在解密 KGM…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 20)
+                    }
+
                     // Main controls
                     HStack(spacing: 40) {
                         // Shuffle

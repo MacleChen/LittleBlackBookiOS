@@ -13,6 +13,7 @@ final class MusicPlayer: NSObject, ObservableObject {
     @Published var isShuffled: Bool = false
     @Published var repeatMode: RepeatMode = .none
     @Published var unsupportedFormatError: String? = nil
+    @Published var isDecrypting: Bool = false   // true while KGM decryption is in progress
 
     enum RepeatMode: String, CaseIterable {
         case none, one, all
@@ -30,11 +31,13 @@ final class MusicPlayer: NSObject, ObservableObject {
     private var queue: [Track] = []
     private var currentIndex: Int = 0
     private var progressTimer: Timer?
+    private var tempDecryptedURL: URL? = nil   // temp file for decrypted KGM audio
 
     private override init() {
         super.init()
         configureAudioSession()
         setupRemoteControls()
+        cleanTempFiles()
     }
 
     // MARK: - Audio Session
@@ -104,27 +107,59 @@ final class MusicPlayer: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Private
+    // MARK: - Private: Load & Play
 
     private func loadAndPlay(_ track: Track) {
         progressTimer?.invalidate()
         player?.stop()
+        discardTempFile()
 
         currentTrack = track
+        isPlaying = false
 
-        // Check for known encrypted/unsupported formats before attempting AVAudioPlayer
         let ext = track.fileURL.pathExtension.lowercased()
-        let encryptedFormats = ["kgm", "kgma", "vpr", "ncm"]
-        if encryptedFormats.contains(ext) {
-            unsupportedFormatError = ".\(ext.uppercased()) 是加密格式，暂不支持播放。请使用官方客户端转换后再导入。"
-            isPlaying = false
-            return
-        }
 
-        guard let p = try? AVAudioPlayer(contentsOf: track.fileURL) else {
-            unsupportedFormatError = "无法播放该文件（格式不受支持或文件已损坏）"
+        if ["kgm", "kgma", "vpr"].contains(ext) {
+            decryptAndPlay(track)
+        } else {
+            startPlayback(url: track.fileURL)
+        }
+    }
+
+    /// Decrypt KGM/VPR on a background thread, then start playback.
+    private func decryptAndPlay(_ track: Track) {
+        let fileURL = track.fileURL
+        isDecrypting = true
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                let decrypted = try KGMDecryptor.decrypt(at: fileURL)
+                let ext = KGMDecryptor.audioExtension(for: decrypted)
+                let tmpURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString + "." + ext)
+                try decrypted.write(to: tmpURL)
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.isDecrypting = false
+                    self.tempDecryptedURL = tmpURL
+                    self.startPlayback(url: tmpURL)
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.isDecrypting = false
+                    self.unsupportedFormatError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Configure AVAudioPlayer and begin playback from a local URL.
+    private func startPlayback(url: URL) {
+        guard let p = try? AVAudioPlayer(contentsOf: url) else {
+            unsupportedFormatError = "无法播放该文件（格式不支持或文件已损坏）"
             isPlaying = false
-            print("[MusicPlayer] Cannot load:", track.fileURL)
             return
         }
         p.delegate = self
@@ -140,8 +175,30 @@ final class MusicPlayer: NSObject, ObservableObject {
                 self?.currentTime = self?.player?.currentTime ?? 0
             }
         }
-
         updateNowPlaying()
+    }
+
+    // MARK: - Temp file management
+
+    private func discardTempFile() {
+        if let tmp = tempDecryptedURL {
+            try? FileManager.default.removeItem(at: tmp)
+            tempDecryptedURL = nil
+        }
+    }
+
+    /// Remove any leftover temp files from previous sessions.
+    private func cleanTempFiles() {
+        let tmp = FileManager.default.temporaryDirectory
+        let items = (try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? []
+        for item in items {
+            // Remove files that look like our UUID-named temp audio files
+            let url = tmp.appendingPathComponent(item)
+            let ext = url.pathExtension.lowercased()
+            if ["mp3", "flac", "m4a", "ogg"].contains(ext) {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     // MARK: - Now Playing / Remote Controls

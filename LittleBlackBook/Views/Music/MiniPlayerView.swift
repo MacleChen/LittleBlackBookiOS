@@ -24,17 +24,22 @@ struct MiniPlayerView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Controls
-            Button { player.previous() } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 18))
-            }
-            Button { player.togglePlayPause() } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 22))
-            }
-            Button { player.next() } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 18))
+            if player.isDecrypting {
+                ProgressView().scaleEffect(0.8)
+                    .frame(width: 60)
+            } else {
+                Button { player.previous() } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 18))
+                }
+                Button { player.togglePlayPause() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 22))
+                }
+                Button { player.next() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 18))
+                }
             }
         }
         .padding(.horizontal, 16)

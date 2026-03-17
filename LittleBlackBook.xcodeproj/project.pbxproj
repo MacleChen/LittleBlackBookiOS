@@ -40,6 +40,7 @@
 		AA000000000000000000001C /* TXTReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001D /* TXTReaderView.swift */; };
 		AA000000000000000000001D /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001E /* PDFReaderView.swift */; };
 		AA000000000000000000001E /* BookReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001F /* BookReaderView.swift */; };
+		AA000000000000000000001F /* KGMDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000020 /* KGMDecryptor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +76,7 @@
 		AB000000000000000000001D /* TXTReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TXTReaderView.swift; sourceTree = "<group>"; };
 		AB000000000000000000001E /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
 		AB000000000000000000001F /* BookReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookReaderView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000020 /* KGMDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KGMDecryptor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +164,7 @@
 				AB000000000000000000000F /* BookStore.swift */,
 				AB0000000000000000000015 /* MusicStore.swift */,
 				AB0000000000000000000016 /* MusicPlayer.swift */,
+				AB0000000000000000000020 /* KGMDecryptor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -348,6 +351,7 @@
 				AA000000000000000000001C /* TXTReaderView.swift in Sources */,
 				AA000000000000000000001D /* PDFReaderView.swift in Sources */,
 				AA000000000000000000001E /* BookReaderView.swift in Sources */,
+				AA000000000000000000001F /* KGMDecryptor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
