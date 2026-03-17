@@ -20,19 +20,22 @@ class ReaderSettings: ObservableObject {
         case .rounded: family = "-apple-system, 'PingFang SC', sans-serif"
         }
         return """
-        body {
-          font-size: \(fontSize)px !important;
-          line-height: \(lineHeight) !important;
+        html, body {
           background-color: \(theme.bg) !important;
-          color: \(theme.fg) !important;
           font-family: \(family) !important;
           max-width: 700px;
           margin: 0 auto;
           padding: 20px 16px 60px;
         }
+        body, body * {
+          font-size: \(fontSize)px !important;
+          line-height: \(lineHeight) !important;
+          color: \(theme.fg) !important;
+          background-color: \(theme.bg) !important;
+        }
         * { box-sizing: border-box; }
-        img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-        a { color: inherit; }
+        img, img * { max-width: 100% !important; height: auto !important; display: block; margin: 0 auto; background-color: transparent !important; }
+        a, a * { color: \(theme.fg) !important; }
         """
     }
 }
@@ -58,8 +61,38 @@ enum ReaderFont: String, CaseIterable {
 
 struct EPUBWebView: UIViewRepresentable {
     let webView: WKWebView
-    func makeUIView(context: Context) -> WKWebView { webView }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    var onSwipeLeft:  (() -> Void)?
+    var onSwipeRight: (() -> Void)?
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> WKWebView {
+        webView.scrollView.showsHorizontalScrollIndicator = false
+
+        let left = UISwipeGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleLeft))
+        left.direction = .left
+        webView.addGestureRecognizer(left)
+
+        let right = UISwipeGestureRecognizer(target: context.coordinator,
+                                              action: #selector(Coordinator.handleRight))
+        right.direction = .right
+        webView.addGestureRecognizer(right)
+
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.onSwipeLeft  = onSwipeLeft
+        context.coordinator.onSwipeRight = onSwipeRight
+    }
+
+    final class Coordinator: NSObject {
+        var onSwipeLeft:  (() -> Void)?
+        var onSwipeRight: (() -> Void)?
+        @objc func handleLeft()  { onSwipeLeft?()  }
+        @objc func handleRight() { onSwipeRight?() }
+    }
 }
 
 // MARK: - WKNavigationDelegate Coordinator
@@ -109,15 +142,21 @@ struct EPUBReaderView: View {
                         .opacity(showControls ? 1 : 0)
                         .allowsHitTesting(showControls)
 
-                    EPUBWebView(webView: wv)
-                        .onTapGesture { showControls.toggle() }
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 40)
-                                .onEnded { value in
-                                    guard chapterIndex >= totalChapters - 1 else { return }
-                                    if value.translation.width < -40 { showCompletion = true }
-                                }
-                        )
+                    EPUBWebView(
+                        webView: wv,
+                        onSwipeLeft: {
+                            if chapterIndex < totalChapters - 1 {
+                                chapterIndex += 1; loadChapter()
+                            } else {
+                                showCompletion = true
+                            }
+                        },
+                        onSwipeRight: {
+                            guard chapterIndex > 0 else { return }
+                            chapterIndex -= 1; loadChapter()
+                        }
+                    )
+                    .onTapGesture { showControls.toggle() }
 
                     bottomBar
                         .opacity(showControls ? 1 : 0)
@@ -131,6 +170,15 @@ struct EPUBReaderView: View {
         .preferredColorScheme(settings.theme.isDark ? .dark : .light)
         .task { await loadBook() }
         .onDisappear { saveProgress(); cleanupTemp() }
+        .onChange(of: settings.fontSize)   { _ in injectCSS() }
+        .onChange(of: settings.lineHeight) { _ in injectCSS() }
+        .onChange(of: settings.fontRaw)    { _ in injectCSS() }
+        .onChange(of: settings.themeRaw)   { _ in
+            guard let wv = webView else { return }
+            wv.backgroundColor = UIColor(settings.theme.uiBG)
+            wv.scrollView.backgroundColor = UIColor(settings.theme.uiBG)
+            injectCSS()
+        }
         .sheet(isPresented: $showSettings) {
             ReaderSettingsPanel(settings: settings, onChanged: { applySettings() })
                 .presentationDetents([.height(420)])
