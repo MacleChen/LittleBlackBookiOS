@@ -27,6 +27,16 @@
 		AA000000000000000000000F /* BookStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000000F /* BookStore.swift */; };
 		AA0000000000000000000010 /* Color+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000010 /* Color+Extensions.swift */; };
 		AA0000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000011 /* Assets.xcassets */; };
+		AA0000000000000000000012 /* Track.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000013 /* Track.swift */; };
+		AA0000000000000000000013 /* MusicCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000014 /* MusicCategory.swift */; };
+		AA0000000000000000000014 /* MusicStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000015 /* MusicStore.swift */; };
+		AA0000000000000000000015 /* MusicPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000016 /* MusicPlayer.swift */; };
+		AA0000000000000000000016 /* MusicViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000017 /* MusicViewModel.swift */; };
+		AA0000000000000000000017 /* MusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000018 /* MusicView.swift */; };
+		AA0000000000000000000018 /* TrackRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000019 /* TrackRowView.swift */; };
+		AA0000000000000000000019 /* TrackDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001A /* TrackDetailView.swift */; };
+		AA000000000000000000001A /* MusicPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001B /* MusicPlayerView.swift */; };
+		AA000000000000000000001B /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001C /* MiniPlayerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +59,16 @@
 		AB0000000000000000000010 /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
 		AB0000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB0000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AB0000000000000000000013 /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
+		AB0000000000000000000014 /* MusicCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicCategory.swift; sourceTree = "<group>"; };
+		AB0000000000000000000015 /* MusicStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicStore.swift; sourceTree = "<group>"; };
+		AB0000000000000000000016 /* MusicPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayer.swift; sourceTree = "<group>"; };
+		AB0000000000000000000017 /* MusicViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicViewModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000018 /* MusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000019 /* TrackRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRowView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001A /* TrackDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDetailView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001B /* MusicPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001C /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -101,6 +121,8 @@
 			children = (
 				AB0000000000000000000003 /* Book.swift */,
 				AB0000000000000000000004 /* Category.swift */,
+				AB0000000000000000000013 /* Track.swift */,
+				AB0000000000000000000014 /* MusicCategory.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -110,6 +132,7 @@
 			children = (
 				AB0000000000000000000005 /* LibraryViewModel.swift */,
 				AB0000000000000000000006 /* CategoriesViewModel.swift */,
+				AB0000000000000000000017 /* MusicViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -121,6 +144,7 @@
 				AD000000000000000000000B /* Categories */,
 				AD000000000000000000000C /* Detail */,
 				AD000000000000000000000D /* Reader */,
+				AD000000000000000000000E /* Music */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -130,6 +154,8 @@
 			children = (
 				AB000000000000000000000E /* EPUBParser.swift */,
 				AB000000000000000000000F /* BookStore.swift */,
+				AB0000000000000000000015 /* MusicStore.swift */,
+				AB0000000000000000000016 /* MusicPlayer.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -184,6 +210,18 @@
 				AB000000000000000000000D /* EPUBReaderView.swift */,
 			);
 			path = Reader;
+			sourceTree = "<group>";
+		};
+		AD000000000000000000000E /* Music */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000018 /* MusicView.swift */,
+				AB0000000000000000000019 /* TrackRowView.swift */,
+				AB000000000000000000001A /* TrackDetailView.swift */,
+				AB000000000000000000001B /* MusicPlayerView.swift */,
+				AB000000000000000000001C /* MiniPlayerView.swift */,
+			);
+			path = Music;
 			sourceTree = "<group>";
 		};
 		AD000000000000000000000F /* Products */ = {
@@ -288,6 +326,16 @@
 				AA000000000000000000000E /* EPUBParser.swift in Sources */,
 				AA000000000000000000000F /* BookStore.swift in Sources */,
 				AA0000000000000000000010 /* Color+Extensions.swift in Sources */,
+				AA0000000000000000000012 /* Track.swift in Sources */,
+				AA0000000000000000000013 /* MusicCategory.swift in Sources */,
+				AA0000000000000000000014 /* MusicStore.swift in Sources */,
+				AA0000000000000000000015 /* MusicPlayer.swift in Sources */,
+				AA0000000000000000000016 /* MusicViewModel.swift in Sources */,
+				AA0000000000000000000017 /* MusicView.swift in Sources */,
+				AA0000000000000000000018 /* TrackRowView.swift in Sources */,
+				AA0000000000000000000019 /* TrackDetailView.swift in Sources */,
+				AA000000000000000000001A /* MusicPlayerView.swift in Sources */,
+				AA000000000000000000001B /* MiniPlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
