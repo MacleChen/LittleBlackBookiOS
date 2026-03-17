@@ -154,17 +154,15 @@ struct MusicPlayerView: View {
         }
     }
 
-    @ViewBuilder
-    private var artworkImage: some View {
+    private var artworkImage: Image {
         if let url = player.currentTrack?.artworkURL,
            let img = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: img)
-        } else {
-            let colors: [Color] = [.indigo, .teal, .orange, .pink, .purple, .blue, .green]
-            let hash = player.currentTrack?.title.hashValue ?? 0
-            let color = colors[abs(hash) % colors.count]
-            Image(uiImage: gradientImage(color: color))
+            return Image(uiImage: img)
         }
+        let colors: [Color] = [.indigo, .teal, .orange, .pink, .purple, .blue, .green]
+        let hash  = player.currentTrack?.title.hashValue ?? 0
+        let color = colors[abs(hash) % colors.count]
+        return Image(uiImage: gradientImage(color: color))
     }
 
     private func gradientImage(color: Color) -> UIImage {
