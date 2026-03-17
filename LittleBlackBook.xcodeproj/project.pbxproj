@@ -7,9 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BB0000000000000000000005 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000002 /* ReadiumShared */; };
-		BB0000000000000000000006 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000003 /* ReadiumStreamer */; };
-		BB0000000000000000000007 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000004 /* ReadiumNavigator */; };
+		CC0000000000000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = CC0000000000000000000002 /* ZIPFoundation */; };
 		AA0000000000000000000001 /* LittleBlackBookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* LittleBlackBookApp.swift */; };
 		AA0000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000002 /* ContentView.swift */; };
 		AA0000000000000000000003 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000003 /* Book.swift */; };
@@ -104,9 +102,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB0000000000000000000005 /* ReadiumShared in Frameworks */,
-				BB0000000000000000000006 /* ReadiumStreamer in Frameworks */,
-				BB0000000000000000000007 /* ReadiumNavigator in Frameworks */,
+				CC0000000000000000000003 /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,9 +295,7 @@
 			);
 			name = LittleBlackBook;
 			packageProductDependencies = (
-				BB0000000000000000000002 /* ReadiumShared */,
-				BB0000000000000000000003 /* ReadiumStreamer */,
-				BB0000000000000000000004 /* ReadiumNavigator */,
+				CC0000000000000000000002 /* ZIPFoundation */,
 			);
 			productName = LittleBlackBook;
 			productReference = AB0000000000000000000000 /* LittleBlackBook.app */;
@@ -333,7 +327,7 @@
 			);
 			mainGroup = AD0000000000000000000001;
 			packageReferences = (
-				BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
+				CC0000000000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
 			productRefGroup = AD000000000000000000000F /* Products */;
 			projectDirPath = "";
@@ -598,31 +592,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+		CC0000000000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.0.0;
+				minimumVersion = 0.9.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		BB0000000000000000000002 /* ReadiumShared */ = {
+		CC0000000000000000000002 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumShared;
-		};
-		BB0000000000000000000003 /* ReadiumStreamer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumStreamer;
-		};
-		BB0000000000000000000004 /* ReadiumNavigator */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			productName = ReadiumNavigator;
+			package = CC0000000000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

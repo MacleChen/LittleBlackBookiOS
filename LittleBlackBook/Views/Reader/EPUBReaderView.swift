@@ -1,10 +1,6 @@
 import SwiftUI
-import ReadiumShared
-import ReadiumStreamer
-import ReadiumNavigator
-
-// ReadiumNavigator also exports a `Color` type; pin this file's Color to SwiftUI.
-typealias Color = SwiftUI.Color
+import WebKit
+import ZIPFoundation
 
 // MARK: - Settings
 
@@ -15,6 +11,30 @@ class ReaderSettings: ObservableObject {
     @AppStorage("r_font")       var fontRaw:    String = ReaderFont.system.rawValue
     var theme: ReaderTheme { get { .init(rawValue: themeRaw) ?? .white } set { themeRaw = newValue.rawValue } }
     var font:  ReaderFont  { get { .init(rawValue: fontRaw)  ?? .system } set { fontRaw  = newValue.rawValue } }
+
+    var css: String {
+        let family: String
+        switch font {
+        case .system:  family = "-apple-system, 'PingFang SC', sans-serif"
+        case .serif:   family = "Georgia, 'Songti SC', 'SimSun', serif"
+        case .rounded: family = "-apple-system, 'PingFang SC', sans-serif"
+        }
+        return """
+        body {
+          font-size: \(fontSize)px !important;
+          line-height: \(lineHeight) !important;
+          background-color: \(theme.bg) !important;
+          color: \(theme.fg) !important;
+          font-family: \(family) !important;
+          max-width: 700px;
+          margin: 0 auto;
+          padding: 20px 16px 60px;
+        }
+        * { box-sizing: border-box; }
+        img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        a { color: inherit; }
+        """
+    }
 }
 
 enum ReaderTheme: String, CaseIterable {
@@ -34,67 +54,22 @@ enum ReaderFont: String, CaseIterable {
     var label: String { switch self { case .system:"系统"; case .serif:"衬线"; case .rounded:"圆润" } }
 }
 
-// MARK: - Settings → Readium Preferences bridge
+// MARK: - WKWebView wrapper
 
-extension ReaderSettings {
-    var readiumPreferences: EPUBPreferences {
-        EPUBPreferences(
-            fontFamily:     readiumFontFamily,
-            fontSize:       fontSize / 20.0,   // 20 pt = 1.0 (100 %)
-            lineHeight:     lineHeight,
-            publisherStyles: false,            // required for lineHeight / font overrides to apply
-            theme:          readiumTheme
-        )
-    }
-
-    private var readiumTheme: Theme {
-        switch theme {
-        case .white:        return .light
-        case .sepia:        return .sepia
-        case .dark, .night: return .dark
-        }
-    }
-
-    private var readiumFontFamily: FontFamily? {
-        switch font {
-        case .system:  return nil
-        case .serif:   return FontFamily(rawValue: "Georgia")
-        case .rounded: return nil
-        }
-    }
+struct EPUBWebView: UIViewRepresentable {
+    let webView: WKWebView
+    func makeUIView(context: Context) -> WKWebView { webView }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
-// MARK: - Navigator Delegate
+// MARK: - WKNavigationDelegate Coordinator
 
-@MainActor
-final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigatorDelegate {
-    @Published var currentProgress: Double = 0
-    @Published var currentLocator: Locator?
-    @Published var currentPosition: Int = 0
-    @Published var totalPositions: Int = 0
-    @Published var isOnLastPage: Bool = false
+final class EPUBWebCoordinator: NSObject, WKNavigationDelegate {
+    var onFinished: (() -> Void)?
 
-    func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
-        currentLocator = locator
-        if let p = locator.locations.totalProgression { currentProgress = p }
-        if let pos = locator.locations.position {
-            currentPosition = pos
-            isOnLastPage = totalPositions > 0 && pos >= totalPositions
-        }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        onFinished?()
     }
-
-    func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
-        print("[Readium] Navigator error:", error)
-    }
-}
-
-// MARK: - UIViewController host
-
-struct NavigatorHostView: UIViewControllerRepresentable {
-    let viewController: EPUBNavigatorViewController
-
-    func makeUIViewController(context: Context) -> EPUBNavigatorViewController { viewController }
-    func updateUIViewController(_ vc: EPUBNavigatorViewController, context: Context) {}
 }
 
 // MARK: - Main View
@@ -104,15 +79,23 @@ struct EPUBReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var book: Book
 
-    @StateObject private var settings    = ReaderSettings()
-    @StateObject private var navDelegate = EPUBReaderNavigatorDelegate()
+    @StateObject private var settings = ReaderSettings()
 
-    @State private var navigatorVC:       EPUBNavigatorViewController?
-    @State private var openedPublication: Publication?
-    @State private var loadError:         String?
-    @State private var showControls:      Bool = true
-    @State private var showSettings:      Bool = false
-    @State private var showCompletion:    Bool = false
+    @State private var webView:        WKWebView?
+    @State private var coordinator:    EPUBWebCoordinator?
+    @State private var spineURLs:      [URL] = []
+    @State private var tempDir:        URL?
+    @State private var chapterIndex:   Int = 0
+    @State private var loadError:      String?
+    @State private var showControls:   Bool = true
+    @State private var showSettings:   Bool = false
+    @State private var showCompletion: Bool = false
+
+    private var totalChapters: Int { spineURLs.count }
+    private var overallProgress: Double {
+        guard totalChapters > 0 else { return 0 }
+        return Double(chapterIndex) / Double(totalChapters)
+    }
 
     var body: some View {
         ZStack {
@@ -120,22 +103,19 @@ struct EPUBReaderView: View {
 
             if let error = loadError {
                 errorView(error)
-            } else if let vc = navigatorVC {
+            } else if let wv = webView {
                 VStack(spacing: 0) {
                     topBar
                         .opacity(showControls ? 1 : 0)
                         .allowsHitTesting(showControls)
 
-                    NavigatorHostView(viewController: vc)
+                    EPUBWebView(webView: wv)
                         .onTapGesture { showControls.toggle() }
-                        // Detect forward-swipe on last page to trigger completion
                         .simultaneousGesture(
                             DragGesture(minimumDistance: 40)
                                 .onEnded { value in
-                                    guard navDelegate.isOnLastPage else { return }
-                                    if value.translation.width < -40 {
-                                        showCompletion = true
-                                    }
+                                    guard chapterIndex >= totalChapters - 1 else { return }
+                                    if value.translation.width < -40 { showCompletion = true }
                                 }
                         )
 
@@ -150,14 +130,11 @@ struct EPUBReaderView: View {
         }
         .preferredColorScheme(settings.theme.isDark ? .dark : .light)
         .task { await loadBook() }
-        .onDisappear { save() }
+        .onDisappear { saveProgress(); cleanupTemp() }
         .sheet(isPresented: $showSettings) {
-            ReaderSettingsPanel(settings: settings, onChanged: {
-                navigatorVC?.submitPreferences(settings.readiumPreferences)
-                Task { await recomputePositions() }
-            })
-            .presentationDetents([.height(420)])
-            .presentationDragIndicator(.visible)
+            ReaderSettingsPanel(settings: settings, onChanged: { applySettings() })
+                .presentationDetents([.height(420)])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showCompletion) {
             BookCompletionSheet(bookTitle: book.title, existingNotes: book.notes) { notes in
@@ -168,7 +145,7 @@ struct EPUBReaderView: View {
         }
     }
 
-    // ── Top bar ───────────────────────────────────────────────────────────────
+    // MARK: - Top bar
 
     private var topBar: some View {
         HStack(spacing: 6) {
@@ -195,25 +172,49 @@ struct EPUBReaderView: View {
         .background(.ultraThinMaterial)
     }
 
-    // ── Bottom bar ────────────────────────────────────────────────────────────
+    // MARK: - Bottom bar
 
     private var bottomBar: some View {
         HStack {
-            Spacer()
-            if navDelegate.totalPositions > 0 {
-                Text("\(navDelegate.currentPosition) / \(navDelegate.totalPositions)")
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
-            } else {
-                Text("\(Int(navDelegate.currentProgress * 100))%")
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
+            Button {
+                guard chapterIndex > 0 else { return }
+                chapterIndex -= 1
+                loadChapter()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14))
+                    .frame(width: 36, height: 30)
             }
+            .disabled(chapterIndex == 0)
+
             Spacer()
+
+            if totalChapters > 0 {
+                Text("第 \(chapterIndex + 1) / \(totalChapters) 章")
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+            }
+
+            Spacer()
+
+            Button {
+                if chapterIndex < totalChapters - 1 {
+                    chapterIndex += 1
+                    loadChapter()
+                } else {
+                    showCompletion = true
+                }
+            } label: {
+                Image(systemName: chapterIndex < totalChapters - 1 ? "chevron.right" : "checkmark.circle")
+                    .font(.system(size: 14))
+                    .frame(width: 36, height: 30)
+            }
         }
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
     }
 
-    // ── Utility ───────────────────────────────────────────────────────────────
+    // MARK: - Utility views
 
     private var loadingView: some View {
         VStack(spacing: 12) {
@@ -231,72 +232,89 @@ struct EPUBReaderView: View {
         }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // ── Load ──────────────────────────────────────────────────────────────────
+    // MARK: - Load
 
     private func loadBook() async {
-        let httpClient     = DefaultHTTPClient()
-        let assetRetriever = AssetRetriever(httpClient: httpClient)
-        let opener = PublicationOpener(
-            parser: DefaultPublicationParser(
-                httpClient: httpClient,
-                assetRetriever: assetRetriever,
-                pdfFactory: DefaultPDFDocumentFactory()
-            )
-        )
-
         do {
-            guard let fileURL = FileURL(url: book.fileURL) else {
-                await MainActor.run { loadError = "无法解析文件路径" }
+            let temp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("epub_\(book.id)_\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+            try FileManager.default.unzipItem(at: book.fileURL, to: temp)
+
+            let spine = try EPUBMetadataParser.extractSpine(from: temp)
+            guard !spine.isEmpty else {
+                await MainActor.run { loadError = "无法解析书籍目录" }
                 return
             }
 
-            let asset = try await assetRetriever.retrieve(url: fileURL).get()
-            let publication = try await opener.open(
-                asset: asset,
-                allowUserInteraction: false
-            ).get()
+            let saved = UserDefaults.standard.integer(forKey: "chapter_\(book.id)")
+            let start = max(0, min(saved, spine.count - 1))
 
-            let total: Int
-            if let positions = try? await publication.positionsByReadingOrder().get() {
-                total = positions.flatMap { $0 }.count
-            } else {
-                total = 0
-            }
-
-            let savedLocator: Locator? = {
-                guard let json = UserDefaults.standard.string(forKey: "locator_\(book.id)") else { return nil }
-                return try? Locator(jsonString: json)
-            }()
-
-            let vc = try EPUBNavigatorViewController(
-                publication: publication,
-                initialLocation: savedLocator,
-                config: .init(preferences: settings.readiumPreferences)
-            )
-            vc.delegate = navDelegate
+            let wvCoord = EPUBWebCoordinator()
+            let wv = WKWebView(frame: .zero)
+            wv.navigationDelegate = wvCoord
+            wv.isOpaque = false
+            wv.backgroundColor = UIColor(settings.theme.uiBG)
+            wv.scrollView.backgroundColor = UIColor(settings.theme.uiBG)
 
             await MainActor.run {
-                openedPublication           = publication
-                navDelegate.totalPositions  = total
-                navDelegate.currentProgress = book.readingProgress
-                navigatorVC = vc
+                self.tempDir      = temp
+                self.spineURLs    = spine
+                self.chapterIndex = start
+                self.coordinator  = wvCoord
+                self.webView      = wv
             }
+
+            loadChapter()
         } catch {
             await MainActor.run { loadError = error.localizedDescription }
         }
     }
 
-    // ── Recompute positions after preference change ────────────────────────────
-
-    private func recomputePositions() async {
-        guard let pub = openedPublication else { return }
-        if let positions = try? await pub.positionsByReadingOrder().get() {
-            let total = positions.flatMap { $0 }.count
-            await MainActor.run { navDelegate.totalPositions = total }
+    private func loadChapter() {
+        guard let wv = webView, chapterIndex < spineURLs.count, let base = tempDir else { return }
+        let url = spineURLs[chapterIndex]
+        wv.loadFileURL(url, allowingReadAccessTo: base)
+        coordinator?.onFinished = {
+            injectCSS()
         }
     }
 
-    // ── Finish book (called from completion sheet) ─────────────────────────────
+    // MARK: - CSS injection
+
+    private func injectCSS() {
+        guard let wv = webView else { return }
+        let escaped = settings.css
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'",  with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let js = """
+        (function(){
+          var e = document.getElementById('_rs');
+          if (e) e.remove();
+          var s = document.createElement('style');
+          s.id = '_rs';
+          s.textContent = '\(escaped)';
+          (document.head || document.documentElement).appendChild(s);
+        })();
+        """
+        wv.evaluateJavaScript(js, completionHandler: nil)
+        wv.backgroundColor = UIColor(settings.theme.uiBG)
+        wv.scrollView.backgroundColor = UIColor(settings.theme.uiBG)
+    }
+
+    private func applySettings() { injectCSS() }
+
+    // MARK: - Save / Finish
+
+    private func saveProgress() {
+        UserDefaults.standard.set(chapterIndex, forKey: "chapter_\(book.id)")
+        var b = book
+        b.readingProgress = overallProgress
+        b.lastReadDate    = Date()
+        store.updateBook(b)
+        book = b
+    }
 
     private func finishBook(notes: String) {
         showCompletion = false
@@ -306,25 +324,14 @@ struct EPUBReaderView: View {
         b.readingProgress = 1.0
         b.lastReadDate    = Date()
         b.notes           = notes
-        if let locator = navDelegate.currentLocator, let json = locator.jsonString {
-            UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
-        }
+        UserDefaults.standard.set(max(0, spineURLs.count - 1), forKey: "chapter_\(book.id)")
         store.updateBook(b)
         book = b
         dismiss()
     }
 
-    // ── Save on disappear ─────────────────────────────────────────────────────
-
-    private func save() {
-        if let locator = navDelegate.currentLocator, let json = locator.jsonString {
-            UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
-        }
-        var b = book
-        b.readingProgress = navDelegate.currentProgress
-        b.lastReadDate    = Date()
-        store.updateBook(b)
-        book = b
+    private func cleanupTemp() {
+        if let dir = tempDir { try? FileManager.default.removeItem(at: dir) }
     }
 }
 
@@ -349,26 +356,20 @@ struct BookCompletionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
                     VStack(spacing: 8) {
                         Image(systemName: "book.closed.fill")
                             .font(.system(size: 52))
                             .foregroundStyle(.accent)
-                        Text("读完了！")
-                            .font(.title2.bold())
+                        Text("读完了！").font(.title2.bold())
                         Text("《\(bookTitle)》")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.top, 12)
 
-                    // Notes editor
                     VStack(alignment: .leading, spacing: 8) {
                         Label("读后感", systemImage: "pencil.line")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-
+                            .font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         ZStack(alignment: .topLeading) {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(Color(.secondarySystemBackground))
@@ -380,19 +381,15 @@ struct BookCompletionSheet: View {
                             if notes.isEmpty {
                                 Text("写下你的读后感想…")
                                     .foregroundStyle(Color(.placeholderText))
-                                    .padding(16)
-                                    .allowsHitTesting(false)
+                                    .padding(16).allowsHitTesting(false)
                             }
                         }
                         .frame(minHeight: 200)
                     }
                     .padding(.horizontal, 20)
 
-                    // Buttons
                     VStack(spacing: 12) {
-                        Button {
-                            onComplete(notes)
-                        } label: {
+                        Button { onComplete(notes) } label: {
                             Text("完成阅读")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
@@ -401,25 +398,18 @@ struct BookCompletionSheet: View {
                                 .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-
-                        Button {
-                            dismiss()
-                        } label: {
-                            Text("稍后再写")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                        Button { dismiss() } label: {
+                            Text("稍后再写").font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("跳过") { dismiss() }
-                        .font(.subheadline)
+                    Button("跳过") { dismiss() }.font(.subheadline)
                 }
             }
         }
@@ -441,7 +431,6 @@ struct ReaderSettingsPanel: View {
                 .frame(maxWidth: .infinity).padding(.top, 10)
             Text("阅读设置").font(.headline).frame(maxWidth: .infinity, alignment: .center)
 
-            // ── Font size ──
             sectionHeader("字体大小", icon: "textformat.size")
             HStack(spacing: 6) {
                 stepBtn(icon: "minus") { step(-1) }.disabled(settings.fontSize <= sizes.first!)
@@ -462,7 +451,6 @@ struct ReaderSettingsPanel: View {
                 stepBtn(icon: "plus") { step(+1) }.disabled(settings.fontSize >= sizes.last!)
             }
 
-            // ── Line height ──
             sectionHeader("行间距", icon: "text.alignleft")
             HStack(spacing: 6) {
                 ForEach(lineHeights, id: \.self) { h in
@@ -477,7 +465,6 @@ struct ReaderSettingsPanel: View {
                 }
             }
 
-            // ── Theme ──
             sectionHeader("主题背景", icon: "circle.lefthalf.filled")
             HStack(spacing: 0) {
                 ForEach(ReaderTheme.allCases, id: \.self) { t in
@@ -498,12 +485,12 @@ struct ReaderSettingsPanel: View {
                 }
             }
 
-            // ── Font ──
             sectionHeader("字体", icon: "character")
             HStack(spacing: 8) {
                 ForEach(ReaderFont.allCases, id: \.self) { f in
                     Button { settings.font = f; onChanged?() } label: {
-                        Text(f.label).font(.system(size: 13, weight: .medium))
+                        Text(f.label)
+                            .font(.system(size: 13, weight: .medium))
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
                             .background(settings.font == f ? Color.accentColor : Color(.tertiarySystemFill))
                             .foregroundStyle(settings.font == f ? .white : .primary)
