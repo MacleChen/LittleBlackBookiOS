@@ -21,6 +21,17 @@ struct OnlineMusicView: View {
             .navigationTitle("在线音乐")
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $vm.searchText, prompt: "搜索歌曲、歌手、专辑")
+            .searchSuggestions {
+                ForEach(vm.searchHistory, id: \.self) { item in
+                    Label(item, systemImage: "clock")
+                        .searchCompletion(item)
+                }
+                if !vm.searchHistory.isEmpty {
+                    Button(role: .destructive) { vm.clearHistory() } label: {
+                        Label("清除历史记录", systemImage: "trash")
+                    }
+                }
+            }
             .onSubmit(of: .search) { Task { await vm.search() } }
             .background(Color(.systemGroupedBackground))
         }

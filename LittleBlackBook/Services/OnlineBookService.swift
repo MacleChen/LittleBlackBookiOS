@@ -15,20 +15,22 @@ actor OnlineBookService {
     }
 
     // MARK: - 豆瓣图书（覆盖中文书籍，含当代小说）
+    // 使用 Frodo API（豆瓣 Android 端接口），比 Web 接口更稳定
 
     func searchDouban(query: String, start: Int = 0) async throws -> [OnlineBook] {
-        var comps = URLComponents(string: "https://book.douban.com/j/search_subjects")!
+        var comps = URLComponents(string: "https://frodo.douban.com/api/v2/book/search")!
         comps.queryItems = [
-            .init(name: "type",       value: "book"),
-            .init(name: "query",      value: query),
-            .init(name: "sort",       value: "rank"),
-            .init(name: "page_limit", value: "20"),
-            .init(name: "page_start", value: "\(start)")
+            .init(name: "q",      value: query),
+            .init(name: "count",  value: "20"),
+            .init(name: "start",  value: "\(start)"),
+            .init(name: "apikey", value: "0dad551ec0f1ed67e6ee46bc71a03db8")
         ]
         var req = URLRequest(url: comps.url!)
-        req.setValue("https://book.douban.com",  forHTTPHeaderField: "Referer")
-        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                     forHTTPHeaderField: "User-Agent")
+        // Mimic the Douban Android app
+        req.setValue(
+            "api-client/1 com.douban.frodo/7.22.0.beta2(230) Android/29 " +
+            "product/shamu vendor/motorola model/XT1085 rom/android brand/Android locale/zh_CN",
+            forHTTPHeaderField: "User-Agent")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15
 
@@ -37,28 +39,24 @@ actor OnlineBookService {
             throw Err.network("豆瓣 HTTP \(http.statusCode)")
         }
 
-        let decoded = try JSONDecoder().decode(DoubanResp.self, from: data)
+        let decoded = try JSONDecoder().decode(DoubanFrodoResp.self, from: data)
         let subjects = decoded.subjects ?? []
         if subjects.isEmpty { throw Err.noResults }
 
         return subjects.map { s in
-            // abstract 通常格式: "作者 / 出版社 / 年份" 或 "作者 / 年份"
-            let parts = s.abstract?.components(separatedBy: " / ").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
-            let author = parts.first ?? "未知作者"
-            let yearStr = parts.first(where: { $0.count >= 4 && Int($0.prefix(4)) != nil })
-            let year = yearStr.flatMap { Int($0.prefix(4)) }
+            // pubdate is e.g. ["2005-1"] or ["1986"]
+            let year = s.pubdate?.first.flatMap { Int($0.prefix(4)) }
 
-            let coverURL = s.cover.flatMap {
-                // Upgrade to HTTPS and use large cover
-                URL(string: $0.replacingOccurrences(of: "http://", with: "https://")
-                               .replacingOccurrences(of: "/m/", with: "/l/")
-                               .replacingOccurrences(of: "/s/", with: "/l/"))
+            // cover: prefer large from pic object, fall back to cover_url
+            let rawCover = s.pic?.large ?? s.pic?.normal ?? s.cover_url
+            let coverURL = rawCover.flatMap {
+                URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
             }
 
             return OnlineBook(
-                id: s.id ?? UUID().uuidString,
-                title: s.title ?? "未知书名",
-                authors: author.isEmpty ? [] : [author],
+                id: s.id,
+                title: s.title,
+                authors: s.author ?? [],
                 coverURL: coverURL,
                 year: year,
                 source: .douban,
@@ -222,17 +220,24 @@ actor OnlineBookService {
     }
 }
 
-// MARK: - Douban models
+// MARK: - Douban Frodo models
 
-private struct DoubanResp: Codable {
-    let subjects: [DoubanSubject]?
+private struct DoubanFrodoResp: Codable {
+    let subjects: [DoubanFrodoSubject]?
+    let total: Int?
 }
-private struct DoubanSubject: Codable {
-    let id: String?
-    let title: String?
-    let cover: String?
+private struct DoubanFrodoSubject: Codable {
+    let id: String
+    let title: String
+    let cover_url: String?      // direct cover URL (some API versions)
+    let pic: DoubanPic?         // nested cover object (newer API versions)
+    let author: [String]?
+    let pubdate: [String]?
     let abstract: String?
-    let url: String?
+}
+private struct DoubanPic: Codable {
+    let normal: String?
+    let large: String?
 }
 
 // MARK: - Open Library models

@@ -17,6 +17,31 @@ final class OnlineBookViewModel: ObservableObject {
     @Published var openLibStatus:  String? = nil
     @Published var gutenbergStatus: String? = nil
 
+    // Search history
+    @Published var searchHistory: [String] = []
+    private let historyKey = "OnlineBook_SearchHistory"
+
+    init() {
+        searchHistory = UserDefaults.standard.stringArray(forKey: historyKey) ?? []
+    }
+
+    func removeHistory(_ item: String) {
+        searchHistory.removeAll { $0 == item }
+        UserDefaults.standard.set(searchHistory, forKey: historyKey)
+    }
+
+    func clearHistory() {
+        searchHistory = []
+        UserDefaults.standard.removeObject(forKey: historyKey)
+    }
+
+    private func saveToHistory(_ query: String) {
+        searchHistory.removeAll { $0 == query }
+        searchHistory.insert(query, at: 0)
+        if searchHistory.count > 15 { searchHistory = Array(searchHistory.prefix(15)) }
+        UserDefaults.standard.set(searchHistory, forKey: historyKey)
+    }
+
     var displayedBooks: [OnlineBook] {
         switch selectedTab {
         case .douban:      return doubanBooks
@@ -36,6 +61,7 @@ final class OnlineBookViewModel: ObservableObject {
     func search() async {
         let q = searchText.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
+        saveToHistory(q)
         isSearching    = true
         errorMessage   = nil
         doubanBooks    = []
