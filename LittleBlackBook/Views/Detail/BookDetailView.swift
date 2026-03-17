@@ -4,31 +4,32 @@ struct BookDetailView: View {
     @EnvironmentObject var store: BookStore
     @Environment(\.dismiss) private var dismiss
     @State var book: Book
-    @State private var isEditing = false
-    @State private var showReader = false
+    @State private var isEditing       = false
+    @State private var showReader      = false
     @State private var showDeleteConfirm = false
+    @State private var showNotes       = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Header: cover + info
                     headerSection
                         .padding(.bottom, 24)
 
-                    // Stats row
                     statsRow
                         .padding(.horizontal, 20)
                         .padding(.bottom, 24)
 
-                    // Description
                     if !book.description.isEmpty {
                         descriptionSection
                             .padding(.horizontal, 20)
                             .padding(.bottom, 24)
                     }
 
-                    // Category picker
+                    notesSection
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 24)
+
                     categorySection
                         .padding(.horizontal, 20)
                         .padding(.bottom, 40)
@@ -48,9 +49,7 @@ struct BookDetailView: View {
                                   systemImage: book.isFavorite ? "heart.slash" : "heart")
                         }
                         Divider()
-                        Button(role: .destructive) {
-                            showDeleteConfirm = true
-                        } label: {
+                        Button(role: .destructive) { showDeleteConfirm = true } label: {
                             Label("删除书籍", systemImage: "trash")
                         }
                     } label: {
@@ -62,22 +61,23 @@ struct BookDetailView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                readButton
+                bottomActions
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                     .background(.ultraThinMaterial)
             }
         }
         .sheet(isPresented: $isEditing) {
-            BookEditView(book: $book)
-                .environmentObject(store)
+            BookEditView(book: $book).environmentObject(store)
         }
         .fullScreenCover(isPresented: $showReader) {
-            EPUBReaderView(book: $book)
-                .environmentObject(store)
+            EPUBReaderView(book: $book).environmentObject(store)
         }
-        .confirmationDialog("确认删除《\(book.title)》？", isPresented: $showDeleteConfirm,
-                             titleVisibility: .visible) {
+        .sheet(isPresented: $showNotes) {
+            NotesEditorSheet(notes: $book.notes, onSave: { store.updateBook(book) })
+        }
+        .confirmationDialog("确认删除《\(book.title)》？",
+                            isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("删除", role: .destructive) {
                 store.deleteBook(book)
                 dismiss()
@@ -89,15 +89,11 @@ struct BookDetailView: View {
 
     private var headerSection: some View {
         ZStack(alignment: .bottom) {
-            // Blurred background
             coverImageView
-                .frame(maxWidth: .infinity)
-                .frame(height: 280)
-                .clipped()
-                .overlay(.ultraThinMaterial)
+                .frame(maxWidth: .infinity).frame(height: 280)
+                .clipped().overlay(.ultraThinMaterial)
 
             HStack(alignment: .bottom, spacing: 16) {
-                // Cover thumbnail
                 coverImageView
                     .frame(width: 110, height: 160)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -105,18 +101,19 @@ struct BookDetailView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(book.title)
-                        .font(.title3.bold())
-                        .foregroundStyle(.primary)
-                        .lineLimit(3)
-
+                        .font(.title3.bold()).foregroundStyle(.primary).lineLimit(3)
                     Text(book.author)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
 
-                    if book.isFavorite {
-                        Label("已收藏", systemImage: "heart.fill")
-                            .font(.caption)
-                            .foregroundStyle(.pink)
+                    HStack(spacing: 8) {
+                        if book.isFavorite {
+                            Label("已收藏", systemImage: "heart.fill")
+                                .font(.caption).foregroundStyle(.pink)
+                        }
+                        if book.isFinished {
+                            Label("已读完", systemImage: "checkmark.seal.fill")
+                                .font(.caption).foregroundStyle(.green)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,11 +127,10 @@ struct BookDetailView: View {
     private var statsRow: some View {
         HStack(spacing: 0) {
             statItem(
-                value: book.readingProgress > 0
-                    ? "\(Int(book.readingProgress * 100))%"
-                    : "未读",
+                value: book.isFinished ? "已完成" : (book.readingProgress > 0 ? "\(Int(book.readingProgress * 100))%" : "未读"),
                 label: "阅读进度",
-                icon: "book.pages"
+                icon: book.isFinished ? "checkmark.seal.fill" : "book.pages",
+                tint: book.isFinished ? .green : .accentColor
             )
             Divider().frame(height: 40)
             statItem(
@@ -144,9 +140,10 @@ struct BookDetailView: View {
             )
             Divider().frame(height: 40)
             statItem(
-                value: book.addedDate.formatted(date: .abbreviated, time: .omitted),
-                label: "加入日期",
-                icon: "calendar"
+                value: book.finishedDate.map { $0.formatted(date: .abbreviated, time: .omitted) }
+                    ?? book.addedDate.formatted(date: .abbreviated, time: .omitted),
+                label: book.finishedDate != nil ? "读完日期" : "加入日期",
+                icon: book.finishedDate != nil ? "flag.checkered" : "calendar"
             )
         }
         .padding(.vertical, 14)
@@ -154,16 +151,11 @@ struct BookDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    private func statItem(value: String, label: String, icon: String) -> some View {
+    private func statItem(value: String, label: String, icon: String, tint: Color = .accentColor) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.accentColor)
-            Text(value)
-                .font(.system(size: 13, weight: .semibold))
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Image(systemName: icon).font(.system(size: 15)).foregroundStyle(tint)
+            Text(value).font(.system(size: 13, weight: .semibold))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -172,14 +164,49 @@ struct BookDetailView: View {
 
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("简介", systemImage: "text.alignleft")
-                .font(.headline)
+            Label("简介", systemImage: "text.alignleft").font(.headline)
             Text(book.description)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineSpacing(4)
+                .font(.callout).foregroundStyle(.secondary).lineSpacing(4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Notes
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("读后感", systemImage: "pencil.line").font(.headline)
+                Spacer()
+                Button { showNotes = true } label: {
+                    Text(book.notes.isEmpty ? "写读后感" : "编辑")
+                        .font(.subheadline)
+                        .foregroundStyle(.accent)
+                }
+            }
+
+            if book.notes.isEmpty {
+                Text("还没有读后感，点击「写读后感」记录你的感想")
+                    .font(.callout)
+                    .foregroundStyle(Color(.placeholderText))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(book.notes)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .lineLimit(5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if book.notes.count > 200 {
+                    Button("查看全文") { showNotes = true }
+                        .font(.caption)
+                        .foregroundStyle(.accent)
+                }
+            }
+        }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -189,15 +216,11 @@ struct BookDetailView: View {
 
     private var categorySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("分类", systemImage: "folder")
-                .font(.headline)
-
+            Label("分类", systemImage: "folder").font(.headline)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     categoryChip(nil)
-                    ForEach(store.categories) { cat in
-                        categoryChip(cat)
-                    }
+                    ForEach(store.categories) { cat in categoryChip(cat) }
                 }
             }
         }
@@ -215,13 +238,10 @@ struct BookDetailView: View {
             store.updateBook(book)
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: cat?.icon ?? "tray")
-                    .font(.caption)
-                Text(cat?.name ?? "未分类")
-                    .font(.caption.weight(.medium))
+                Image(systemName: cat?.icon ?? "tray").font(.caption)
+                Text(cat?.name ?? "未分类").font(.caption.weight(.medium))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 12).padding(.vertical, 7)
             .background(isSelected ? color : Color(.tertiarySystemFill))
             .foregroundStyle(isSelected ? .white : .primary)
             .clipShape(Capsule())
@@ -229,23 +249,59 @@ struct BookDetailView: View {
         .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
-    // MARK: - Read Button
+    // MARK: - Bottom Actions
 
-    private var readButton: some View {
-        Button {
-            showReader = true
-        } label: {
-            HStack {
-                Image(systemName: book.readingProgress > 0 ? "book.pages" : "book")
-                Text(book.readingProgress > 0 ? "继续阅读" : "开始阅读")
-                    .font(.headline)
+    private var bottomActions: some View {
+        VStack(spacing: 10) {
+            // Mark finished button — only when not yet finished
+            if !book.isFinished {
+                Button { markFinished() } label: {
+                    HStack {
+                        Image(systemName: "checkmark.seal")
+                        Text("标记完成")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.green.opacity(0.15))
+                    .foregroundStyle(.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                    )
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(.accent)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            // Read button
+            Button { showReader = true } label: {
+                HStack {
+                    Image(systemName: book.readingProgress > 0 ? "book.pages" : "book")
+                    Text(book.isFinished ? "再次阅读" : (book.readingProgress > 0 ? "继续阅读" : "开始阅读"))
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(.accent)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
         }
+    }
+
+    // MARK: - Helpers
+
+    private func toggleFavorite() {
+        book.isFavorite.toggle()
+        store.updateBook(book)
+    }
+
+    private func markFinished() {
+        book.isFinished      = true
+        book.finishedDate    = Date()
+        book.readingProgress = 1.0
+        book.lastReadDate    = Date()
+        store.updateBook(book)
     }
 
     // MARK: - Cover image
@@ -253,9 +309,7 @@ struct BookDetailView: View {
     @ViewBuilder
     private var coverImageView: some View {
         if let url = book.coverImageURL, let img = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
+            Image(uiImage: img).resizable().scaledToFill()
         } else {
             defaultCover
         }
@@ -266,17 +320,56 @@ struct BookDetailView: View {
         let color = colors[abs(book.title.hashValue) % colors.count]
         return LinearGradient(colors: [color, color.opacity(0.6)],
                               startPoint: .topLeading, endPoint: .bottomTrailing)
-            .overlay(
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.white.opacity(0.8))
-            )
+            .overlay(Image(systemName: "book.closed.fill")
+                .font(.system(size: 48)).foregroundStyle(.white.opacity(0.8)))
     }
+}
 
-    // MARK: - Helpers
+// MARK: - Notes Editor Sheet
 
-    private func toggleFavorite() {
-        book.isFavorite.toggle()
-        store.updateBook(book)
+struct NotesEditorSheet: View {
+    @Binding var notes: String
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .topLeading) {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                    TextEditor(text: $draft)
+                        .scrollContentBackground(.hidden)
+                        .background(.clear)
+                        .padding(10)
+                    if draft.isEmpty {
+                        Text("写下你的读后感想…")
+                            .foregroundStyle(Color(.placeholderText))
+                            .padding(16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("读后感")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        notes = draft
+                        onSave()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear { draft = notes }
+        }
     }
 }
