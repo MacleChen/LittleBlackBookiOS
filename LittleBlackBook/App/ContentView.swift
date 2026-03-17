@@ -7,25 +7,27 @@ struct ContentView: View {
     @State private var showFullPlayer   = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            TabView {
-                LibraryView()
-                    .tabItem { Label("书库", systemImage: "books.vertical.fill") }
-                    .environmentObject(store)
+        TabView {
+            LibraryView()
+                .environmentObject(store)
+                .safeAreaInset(edge: .bottom, spacing: 0) { miniPlayerBar }
+                .tabItem { Label("书库", systemImage: "books.vertical.fill") }
 
-                MusicView()
-                    .tabItem { Label("音乐", systemImage: "music.note.list") }
-                    .environmentObject(musicStore)
-            }
-            .tint(.indigo)
-            .safeAreaInset(edge: .bottom) {
-                if player.currentTrack != nil {
-                    MiniPlayerView(onTap: { showFullPlayer = true })
-                }
-            }
+            MusicView()
+                .environmentObject(musicStore)
+                .safeAreaInset(edge: .bottom, spacing: 0) { miniPlayerBar }
+                .tabItem { Label("音乐", systemImage: "music.note.list") }
         }
+        .tint(.indigo)
         .sheet(isPresented: $showFullPlayer) {
             MusicPlayerView()
+        }
+    }
+
+    @ViewBuilder
+    private var miniPlayerBar: some View {
+        if player.currentTrack != nil {
+            MiniPlayerView(onTap: { showFullPlayer = true })
         }
     }
 }
