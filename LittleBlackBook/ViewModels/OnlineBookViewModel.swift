@@ -2,9 +2,10 @@ import SwiftUI
 
 @MainActor
 final class OnlineBookViewModel: ObservableObject {
-    @Published var doubanBooks:      [OnlineBook] = []
-    @Published var openLibraryBooks: [OnlineBook] = []
-    @Published var gutenbergBooks:   [OnlineBook] = []
+    @Published var doubanBooks:        [OnlineBook] = []
+    @Published var openLibraryBooks:   [OnlineBook] = []
+    @Published var gutenbergBooks:     [OnlineBook] = []
+    @Published var standardEbooksBooks:[OnlineBook] = []
     @Published var searchText   = ""
     @Published var selectedTab: OnlineBook.Source = .douban
     @Published var isSearching  = false
@@ -13,9 +14,10 @@ final class OnlineBookViewModel: ObservableObject {
     @Published var importedIds: Set<String> = []
 
     // Per-source status labels shown in UI
-    @Published var doubanStatus:   String? = nil
-    @Published var openLibStatus:  String? = nil
-    @Published var gutenbergStatus: String? = nil
+    @Published var doubanStatus:        String? = nil
+    @Published var openLibStatus:       String? = nil
+    @Published var gutenbergStatus:     String? = nil
+    @Published var standardEbooksStatus:String? = nil
 
     // Search history
     @Published var searchHistory: [String] = []
@@ -44,17 +46,19 @@ final class OnlineBookViewModel: ObservableObject {
 
     var displayedBooks: [OnlineBook] {
         switch selectedTab {
-        case .douban:      return doubanBooks
-        case .openLibrary: return openLibraryBooks
-        case .gutenberg:   return gutenbergBooks
+        case .douban:         return doubanBooks
+        case .openLibrary:    return openLibraryBooks
+        case .gutenberg:      return gutenbergBooks
+        case .standardEbooks: return standardEbooksBooks
         }
     }
 
     var currentStatus: String? {
         switch selectedTab {
-        case .douban:      return doubanStatus
-        case .openLibrary: return openLibStatus
-        case .gutenberg:   return gutenbergStatus
+        case .douban:         return doubanStatus
+        case .openLibrary:    return openLibStatus
+        case .gutenberg:      return gutenbergStatus
+        case .standardEbooks: return standardEbooksStatus
         }
     }
 
@@ -64,17 +68,20 @@ final class OnlineBookViewModel: ObservableObject {
         saveToHistory(q)
         isSearching    = true
         errorMessage   = nil
-        doubanBooks    = []
-        openLibraryBooks = []
-        gutenbergBooks = []
-        doubanStatus   = nil
-        openLibStatus  = nil
-        gutenbergStatus = nil
+        doubanBooks         = []
+        openLibraryBooks    = []
+        gutenbergBooks      = []
+        standardEbooksBooks = []
+        doubanStatus        = nil
+        openLibStatus       = nil
+        gutenbergStatus     = nil
+        standardEbooksStatus = nil
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.searchDouban(query: q) }
             group.addTask { await self.searchOL(query: q) }
             group.addTask { await self.searchGut(query: q) }
+            group.addTask { await self.searchSE(query: q) }
         }
         isSearching = false
     }
@@ -113,6 +120,17 @@ final class OnlineBookViewModel: ObservableObject {
             gutenbergStatus = "Gutenberg 未找到相关书籍"
         } catch {
             gutenbergStatus = "Gutenberg 搜索失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func searchSE(query: String) async {
+        do {
+            standardEbooksBooks = try await OnlineBookService.shared.searchStandardEbooks(query: query)
+            standardEbooksStatus = "找到 \(standardEbooksBooks.count) 本可下载"
+        } catch OnlineBookService.Err.noResults {
+            standardEbooksStatus = "Standard Ebooks 未找到相关书籍"
+        } catch {
+            standardEbooksStatus = "Standard Ebooks 搜索失败：\(error.localizedDescription)"
         }
     }
 

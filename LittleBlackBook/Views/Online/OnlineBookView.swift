@@ -104,6 +104,7 @@ struct OnlineBookView: View {
                 Label("豆瓣图书 — 中文书籍全覆盖（含当代小说）", systemImage: "globe")
                 Label("Open Library — 英文开放书籍 + 中文档案馆（EPUB）", systemImage: "archivebox")
                 Label("Gutenberg — 7万+ 经典公版书（EPUB）", systemImage: "book.pages")
+                Label("Standard Ebooks — 高品质公版英文书（EPUB，直接下载）", systemImage: "sparkles.rectangle.stack")
             }
             .font(.caption)
             .foregroundStyle(.tertiary)
@@ -196,5 +197,5 @@ struct OnlineBookRow: View {
 // MARK: - Source CaseIterable
 
 extension OnlineBook.Source: CaseIterable {
-    static var allCases: [OnlineBook.Source] { [.douban, .openLibrary, .gutenberg] }
+    static var allCases: [OnlineBook.Source] { [.douban, .openLibrary, .gutenberg, .standardEbooks] }
 }

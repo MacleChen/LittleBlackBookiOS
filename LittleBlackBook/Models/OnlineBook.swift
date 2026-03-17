@@ -11,9 +11,10 @@ struct OnlineBook: Identifiable, Sendable, Hashable {
     let format: String      // "EPUB" or "PDF"
 
     enum Source: String, Hashable {
-        case douban      = "豆瓣图书"
-        case openLibrary = "Open Library"
-        case gutenberg   = "Gutenberg"
+        case douban         = "豆瓣图书"
+        case openLibrary    = "Open Library"
+        case gutenberg      = "Gutenberg"
+        case standardEbooks = "Standard Ebooks"
     }
 
     var authorText: String { authors.joined(separator: ", ") }

@@ -206,6 +206,30 @@ actor OnlineBookService {
         }
     }
 
+    // MARK: - Standard Ebooks (OPDS)
+
+    func searchStandardEbooks(query: String) async throws -> [OnlineBook] {
+        var comps = URLComponents(string: "https://standardebooks.org/feeds/opds/search")!
+        comps.queryItems = [.init(name: "q", value: query)]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("LittleBlackBook/1.0 (personal)", forHTTPHeaderField: "User-Agent")
+        req.setValue("application/atom+xml, application/xml, */*;q=0.8", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 20
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw Err.network("Standard Ebooks HTTP \(http.statusCode)")
+        }
+
+        let parser = OPDSAtomParser()
+        let xmlParser = XMLParser(data: data)
+        xmlParser.delegate = parser
+        xmlParser.parse()
+
+        if parser.books.isEmpty { throw Err.noResults }
+        return parser.books
+    }
+
     // MARK: - Download
 
     func downloadBook(book: OnlineBook) async throws -> URL {
@@ -216,9 +240,20 @@ actor OnlineBookService {
             return try await downloadGutenberg(book: book, apiURL: downloadURL)
         case .openLibrary:
             return try await downloadArchiveOrg(book: book, hintURL: downloadURL)
+        case .standardEbooks:
+            return try await downloadStandardEbooks(url: downloadURL, book: book)
         case .douban:
             throw Err.network("豆瓣图书不提供直接下载，请手动导入 EPUB 文件")
         }
+    }
+
+    private func downloadStandardEbooks(url: URL, book: OnlineBook) async throws -> URL {
+        let (tmp, resp) = try await performDownload(url: url, referer: "https://standardebooks.org/")
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            try? FileManager.default.removeItem(at: tmp)
+            throw Err.network("Standard Ebooks 下载失败，服务器返回 \(http.statusCode)")
+        }
+        return try finalize(tmpFile: tmp, book: book)
     }
 
     // MARK: - Source-specific download strategies
@@ -234,11 +269,14 @@ actor OnlineBookService {
 
         var candidates: [URL] = []
         if let gid = gutenbergId {
-            let base = "https://www.gutenberg.org/cache/epub/\(gid)/pg\(gid)"
+            let wwwBase  = "https://www.gutenberg.org/cache/epub/\(gid)/pg\(gid)"
+            let pglafBase = "https://gutenberg.pglaf.org/cache/epub/\(gid)/pg\(gid)"
             candidates.append(contentsOf: [
-                URL(string: "\(base)-images.epub")!,   // most common
-                URL(string: "\(base).epub")!,           // no-images
-                URL(string: "\(base)-h.epub")!,         // HTML-based variant
+                URL(string: "\(pglafBase)-images.epub")!,  // PGLAF mirror (no Cloudflare)
+                URL(string: "\(pglafBase).epub")!,
+                URL(string: "\(wwwBase)-images.epub")!,
+                URL(string: "\(wwwBase).epub")!,
+                URL(string: "\(wwwBase)-h.epub")!,
             ])
         }
         candidates.append(apiURL)   // original Gutendex URL (redirect) as last resort
@@ -430,4 +468,102 @@ private struct GutAuthor: Codable {
     let name: String
     let birth_year: Int?
     let death_year: Int?
+}
+
+// MARK: - Standard Ebooks OPDS/Atom parser
+
+private final class OPDSAtomParser: NSObject, XMLParserDelegate {
+    private static let seBase = "https://standardebooks.org"
+
+    var books: [OnlineBook] = []
+
+    private var inEntry    = false
+    private var inAuthor   = false
+    private var currentEl  = ""
+    private var title      = ""
+    private var authorName = ""
+    private var entryId    = ""
+    private var epubHref: String?
+    private var coverHref: String?
+    private var updatedYear: Int?
+
+    func parser(_ parser: XMLParser,
+                didStartElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?,
+                attributes: [String: String] = [:]) {
+        currentEl = elementName
+        switch elementName {
+        case "entry":
+            inEntry    = true
+            title      = ""
+            authorName = ""
+            entryId    = ""
+            epubHref   = nil
+            coverHref  = nil
+            updatedYear = nil
+        case "author":
+            inAuthor = true
+        case "link" where inEntry:
+            let rel  = attributes["rel"] ?? ""
+            let type = attributes["type"] ?? ""
+            let href = attributes["href"] ?? ""
+            if type == "application/epub+zip" || rel.contains("acquisition") {
+                if type == "application/epub+zip" {
+                    epubHref = href
+                }
+            }
+            if rel.contains("image") && !rel.contains("thumbnail") {
+                coverHref = href
+            }
+        default: break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        let s = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return }
+        switch currentEl {
+        case "title" where inEntry:     title      += s
+        case "name"  where inAuthor:    authorName += s
+        case "id"    where inEntry:     entryId    += s
+        case "updated" where inEntry:
+            if let year = Int(s.prefix(4)) { updatedYear = year }
+        default: break
+        }
+    }
+
+    func parser(_ parser: XMLParser,
+                didEndElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?) {
+        switch elementName {
+        case "author": inAuthor = false
+        case "entry":
+            if inEntry, !title.isEmpty, let href = epubHref {
+                let base = Self.seBase
+                let epubURL  = href.hasPrefix("http") ? URL(string: href) : URL(string: base + href)
+                let coverURL = coverHref.flatMap {
+                    $0.hasPrefix("http") ? URL(string: $0) : URL(string: base + $0)
+                }
+                // Use last path component of entry id as unique id
+                let id = entryId.isEmpty ? UUID().uuidString : entryId
+                    .components(separatedBy: "/").last(where: { !$0.isEmpty }) ?? UUID().uuidString
+                books.append(OnlineBook(
+                    id: id,
+                    title: title,
+                    authors: authorName.isEmpty ? [] : [authorName],
+                    coverURL: coverURL,
+                    year: updatedYear,
+                    source: .standardEbooks,
+                    downloadURL: epubURL,
+                    format: "EPUB"
+                ))
+            }
+            inEntry    = false
+            inAuthor   = false
+        default: break
+        }
+        currentEl = ""
+    }
 }
