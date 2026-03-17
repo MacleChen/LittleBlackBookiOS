@@ -209,8 +209,8 @@ actor OnlineBookService {
     // MARK: - Standard Ebooks (OPDS)
 
     func searchStandardEbooks(query: String) async throws -> [OnlineBook] {
-        var comps = URLComponents(string: "https://standardebooks.org/feeds/opds/search")!
-        comps.queryItems = [.init(name: "q", value: query)]
+        var comps = URLComponents(string: "https://standardebooks.org/feeds/opds/all")!
+        comps.queryItems = [.init(name: "query", value: query)]
         var req = URLRequest(url: comps.url!)
         req.setValue("LittleBlackBook/1.0 (personal)", forHTTPHeaderField: "User-Agent")
         req.setValue("application/atom+xml, application/xml, */*;q=0.8", forHTTPHeaderField: "Accept")
@@ -508,12 +508,11 @@ private final class OPDSAtomParser: NSObject, XMLParserDelegate {
             let rel  = attributes["rel"] ?? ""
             let type = attributes["type"] ?? ""
             let href = attributes["href"] ?? ""
-            if type == "application/epub+zip" || rel.contains("acquisition") {
-                if type == "application/epub+zip" {
-                    epubHref = href
-                }
+            // Only keep the first epub+zip link (= "Recommended compatible epub")
+            if type == "application/epub+zip", epubHref == nil {
+                epubHref = href
             }
-            if rel.contains("image") && !rel.contains("thumbnail") {
+            if rel.contains("opds-spec.org/image") && !rel.contains("thumbnail") {
                 coverHref = href
             }
         default: break
