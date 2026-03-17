@@ -17,19 +17,57 @@ actor OnlineBookService {
     // MARK: - 豆瓣图书（覆盖中文书籍，含当代小说）
     // 使用 Frodo API（豆瓣 Android 端接口），比 Web 接口更稳定
 
+    private static let doubanApiKey = "0dad551ec0f1ed67e6ee46bc71a03db8"
+
     func searchDouban(query: String, start: Int = 0) async throws -> [OnlineBook] {
+        // 先尝试 Frodo API（Authorization header 方式）
+        if let books = try? await searchDoubanFrodo(query: query, start: start), !books.isEmpty {
+            return books
+        }
+        // 回退：使用 v2 公开接口
+        return try await searchDoubanV2(query: query, start: start)
+    }
+
+    private func searchDoubanFrodo(query: String, start: Int) async throws -> [OnlineBook] {
         var comps = URLComponents(string: "https://frodo.douban.com/api/v2/book/search")!
+        comps.queryItems = [
+            .init(name: "q",     value: query),
+            .init(name: "count", value: "20"),
+            .init(name: "start", value: "\(start)")
+        ]
+        var req = URLRequest(url: comps.url!)
+        // apikey goes in Authorization header, not query string
+        req.setValue("Bearer \(Self.doubanApiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(
+            "api-client/1 com.douban.frodo/7.22.0.beta2(230) Android/29 " +
+            "product/shamu vendor/motorola model/XT1085 rom/android brand/Android locale/zh_CN thread/1",
+            forHTTPHeaderField: "User-Agent")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("zh_CN", forHTTPHeaderField: "Accept-Language")
+        req.timeoutInterval = 15
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw Err.noResults
+        }
+        let decoded = try JSONDecoder().decode(DoubanFrodoResp.self, from: data)
+        let subjects = decoded.subjects ?? []
+        if subjects.isEmpty { throw Err.noResults }
+        return subjects.map { doubanFrodoToBook($0) }
+    }
+
+    private func searchDoubanV2(query: String, start: Int) async throws -> [OnlineBook] {
+        var comps = URLComponents(string: "https://api.douban.com/v2/book/search")!
         comps.queryItems = [
             .init(name: "q",      value: query),
             .init(name: "count",  value: "20"),
             .init(name: "start",  value: "\(start)"),
-            .init(name: "apikey", value: "0dad551ec0f1ed67e6ee46bc71a03db8")
+            .init(name: "apikey", value: Self.doubanApiKey)
         ]
         var req = URLRequest(url: comps.url!)
-        // Mimic the Douban Android app
         req.setValue(
-            "api-client/1 com.douban.frodo/7.22.0.beta2(230) Android/29 " +
-            "product/shamu vendor/motorola model/XT1085 rom/android brand/Android locale/zh_CN",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
             forHTTPHeaderField: "User-Agent")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15
@@ -38,10 +76,52 @@ actor OnlineBookService {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw Err.network("豆瓣 HTTP \(http.statusCode)")
         }
+        let decoded = try JSONDecoder().decode(DoubanV2Resp.self, from: data)
+        let books = decoded.books ?? []
+        if books.isEmpty { throw Err.noResults }
+        return books.map { doubanV2ToBook($0) }
+    }
 
-        let decoded = try JSONDecoder().decode(DoubanFrodoResp.self, from: data)
-        let subjects = decoded.subjects ?? []
-        if subjects.isEmpty { throw Err.noResults }
+    // MARK: - Mapping helpers
+
+    private func doubanFrodoToBook(_ s: DoubanFrodoSubject) -> OnlineBook {
+        let year = s.pubdate?.first.flatMap { Int($0.prefix(4)) }
+        let rawCover = s.pic?.large ?? s.pic?.normal ?? s.cover_url
+        let coverURL = rawCover.flatMap {
+            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
+        }
+        return OnlineBook(
+            id: s.id,
+            title: s.title,
+            authors: s.author ?? [],
+            coverURL: coverURL,
+            year: year,
+            source: .douban,
+            downloadURL: nil,
+            format: "-"
+        )
+    }
+
+    private func doubanV2ToBook(_ b: DoubanV2Book) -> OnlineBook {
+        let year = b.pubdate.flatMap { Int($0.prefix(4)) }
+        let coverURL = b.images?.large.flatMap {
+            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
+        } ?? b.image.flatMap {
+            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
+        }
+        let authors = b.author ?? []
+        return OnlineBook(
+            id: b.id ?? UUID().uuidString,
+            title: b.title ?? "未知书名",
+            authors: authors,
+            coverURL: coverURL,
+            year: year,
+            source: .douban,
+            downloadURL: nil,
+            format: "-"
+        )
+    }
+
 
         return subjects.map { s in
             // pubdate is e.g. ["2005-1"] or ["1986"]
@@ -218,6 +298,27 @@ actor OnlineBookService {
         try FileManager.default.moveItem(at: tmpFile, to: destURL)
         return destURL
     }
+}
+
+// MARK: - Douban v2 models (fallback API)
+
+private struct DoubanV2Resp: Codable {
+    let books: [DoubanV2Book]?
+    let total: Int?
+    let count: Int?
+}
+private struct DoubanV2Book: Codable {
+    let id: String?
+    let title: String?
+    let author: [String]?
+    let pubdate: String?
+    let image: String?
+    let images: DoubanV2Images?
+}
+private struct DoubanV2Images: Codable {
+    let small: String?
+    let medium: String?
+    let large: String?
 }
 
 // MARK: - Douban Frodo models
