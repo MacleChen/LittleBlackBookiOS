@@ -4,9 +4,7 @@ actor OnlineMusicService {
     static let shared = OnlineMusicService()
     private init() {}
 
-    // NetEase Music public web API
     private let neteaseBase = "https://music.163.com"
-    // Huibq URL resolver (fallback)
     private let huibqBase   = "https://lxmusicapi.onrender.com"
     private let huibqKey    = "share-v3"
 
@@ -16,16 +14,74 @@ actor OnlineMusicService {
         case noResults, noURL, network(String)
         var errorDescription: String? {
             switch self {
-            case .noResults:      return "未找到相关歌曲"
-            case .noURL:          return "无法获取播放链接（该歌曲可能为会员专属）"
+            case .noResults:      return "未找到可播放的歌曲（该页结果均为会员专属，请尝试换个关键词）"
+            case .noURL:          return "无法获取播放链接"
             case .network(let m): return "网络错误：\(m)"
             }
         }
     }
 
-    // MARK: - Search
+    // MARK: - Public: search + filter (only returns playable songs)
 
-    func search(query: String, page: Int = 1, limit: Int = 20) async throws -> [OnlineSong] {
+    func search(query: String, page: Int = 1) async throws -> [OnlineSong] {
+        // Fetch 40 candidates so after filtering we still have enough results
+        let candidates = try await fetchFromNetease(query: query, page: page, limit: 40)
+        guard !candidates.isEmpty else { throw Err.noResults }
+
+        // Concurrently validate URLs via Huibq, preserving original order
+        let validated: [OnlineSong] = await withTaskGroup(of: (Int, URL?).self) { group in
+            for (idx, song) in candidates.enumerated() {
+                group.addTask { [self] in
+                    let url = await self.huibqURL(songId: song.id)
+                    return (idx, url)
+                }
+            }
+            var pairs: [(Int, URL?)] = []
+            for await pair in group { pairs.append(pair) }
+
+            return pairs
+                .filter { $0.1 != nil }
+                .sorted { $0.0 < $1.0 }
+                .prefix(20)
+                .map { (idx, url) in
+                    var s = candidates[idx]
+                    s.playURL = url
+                    return s
+                }
+        }
+
+        guard !validated.isEmpty else { throw Err.noResults }
+        return validated
+    }
+
+    // MARK: - Download audio to temp file → returns local URL
+
+    func downloadAudio(song: OnlineSong) async throws -> URL {
+        // Use the pre-resolved URL from search if available; otherwise re-resolve
+        let playURL: URL
+        if let cached = song.playURL {
+            playURL = cached
+        } else {
+            guard let resolved = await huibqURL(songId: song.id) else { throw Err.noURL }
+            playURL = resolved
+        }
+
+        let (tmpFile, _) = try await URLSession.shared.download(from: playURL)
+        let pe = playURL.pathExtension.lowercased()
+        let ext = ["mp3","flac","m4a","ogg","wav"].contains(pe) ? pe : "mp3"
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "." + ext)
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try FileManager.default.removeItem(at: destURL)
+        }
+        try FileManager.default.moveItem(at: tmpFile, to: destURL)
+        return destURL
+    }
+
+    // MARK: - Private helpers
+
+    /// Fetch raw search results from NetEase (no URL validation).
+    private func fetchFromNetease(query: String, page: Int, limit: Int) async throws -> [OnlineSong] {
         var comps = URLComponents(string: "\(neteaseBase)/api/search/get/web")!
         comps.queryItems = [
             .init(name: "s",      value: query),
@@ -35,88 +91,55 @@ actor OnlineMusicService {
         ]
         var req = URLRequest(url: comps.url!)
         req.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
-        req.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            forHTTPHeaderField: "User-Agent"
-        )
+        req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36",
+                     forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 15
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw Err.network("HTTP \(http.statusCode)")
         }
-
         let decoded = try JSONDecoder().decode(NeteaseSearchResp.self, from: data)
-        let songs = decoded.result?.songs ?? []
-        if songs.isEmpty { throw Err.noResults }
-        return songs.map(\.asOnlineSong)
+        return (decoded.result?.songs ?? []).map(\.asOnlineSong)
     }
 
-    // MARK: - Resolve play URL
-
-    func resolvePlayURL(song: OnlineSong, quality: Quality = .q128) async throws -> URL {
-        // Primary: NetEase outer URL (free songs, no auth)
-        let outerStr = "\(neteaseBase)/song/media/outer/url?id=\(song.id).mp3"
-        if let outerURL = URL(string: outerStr) {
-            let config = URLSessionConfiguration.ephemeral
-            let session = URLSession(configuration: config)
-            if let (_, res) = try? await session.data(from: outerURL),
-               let http = res as? HTTPURLResponse,
-               (200...299).contains(http.statusCode) {
-                return outerURL
-            }
-        }
-
-        // Fallback: Huibq resolver
-        let urlStr = "\(huibqBase)/url/wy/\(song.id)/\(quality.rawValue)"
-        guard let url = URL(string: urlStr) else { throw Err.noURL }
+    /// Try to resolve a Huibq play URL for the given NetEase song ID.
+    /// Returns nil if the song is unavailable (VIP, removed, etc.).
+    private func huibqURL(songId: String, quality: Quality = .q128) async -> URL? {
+        let urlStr = "\(huibqBase)/url/wy/\(songId)/\(quality.rawValue)"
+        guard let url = URL(string: urlStr) else { return nil }
         var req = URLRequest(url: url)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(huibqKey,           forHTTPHeaderField: "X-Request-Key")
         req.setValue("Mozilla/5.0",      forHTTPHeaderField: "User-Agent")
-        req.timeoutInterval = 20
+        req.timeoutInterval = 8   // short timeout so filtering doesn't take too long
 
-        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
         struct HResp: Codable { let code: Int; let data: String? }
-        let hr = try JSONDecoder().decode(HResp.self, from: data)
-        guard hr.code == 0, let s = hr.data, let playURL = URL(string: s) else { throw Err.noURL }
-        return playURL
-    }
-
-    // MARK: - Download audio to temp file → returns local URL
-
-    func downloadAudio(song: OnlineSong) async throws -> URL {
-        let playURL = try await resolvePlayURL(song: song)
-        let (tmpFile, _) = try await URLSession.shared.download(from: playURL)
-        let ext = playURL.pathExtension.isEmpty ? "mp3" : playURL.pathExtension
-        let destURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + "." + ext)
-        if FileManager.default.fileExists(atPath: destURL.path) {
-            try FileManager.default.removeItem(at: destURL)
-        }
-        try FileManager.default.moveItem(at: tmpFile, to: destURL)
-        return destURL
+        guard let hr   = try? JSONDecoder().decode(HResp.self, from: data),
+              hr.code == 0,
+              let s    = hr.data, !s.isEmpty,
+              let play = URL(string: s) else { return nil }
+        return play
     }
 }
 
-// MARK: - Netease response models (private)
+// MARK: - Netease response models
 
 private struct NeteaseSearchResp: Codable {
     let result: NeteaseResult?
     let code: Int
 }
-
 private struct NeteaseResult: Codable {
     let songs: [NeteaseSong]?
     let songCount: Int?
 }
-
 private struct NeteaseSong: Codable {
     let id: Int
     let name: String
     let artists: [NeteaseArtist]
     let album: NeteaseAlbum
-    let duration: Int   // milliseconds
+    let duration: Int
 
     var asOnlineSong: OnlineSong {
         OnlineSong(
@@ -125,10 +148,10 @@ private struct NeteaseSong: Codable {
             artist: artists.map(\.name).joined(separator: " / "),
             album: album.name,
             duration: TimeInterval(duration) / 1000.0,
-            coverURL: album.picUrl.flatMap { URL(string: $0) }
+            coverURL: album.picUrl.flatMap { URL(string: $0) },
+            playURL: nil
         )
     }
 }
-
 private struct NeteaseArtist: Codable { let id: Int; let name: String }
 private struct NeteaseAlbum:  Codable { let id: Int; let name: String; let picUrl: String? }

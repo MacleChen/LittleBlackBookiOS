@@ -34,7 +34,7 @@ struct OnlineBookView: View {
         }
     }
 
-    // MARK: - Source picker
+    // MARK: - Source segment
 
     private var sourceSegment: some View {
         Picker("来源", selection: $vm.selectedTab) {
@@ -77,12 +77,12 @@ struct OnlineBookView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
             VStack(spacing: 4) {
-                Text("Open Library — 数百万本开放获取电子书")
-                Text("Project Gutenberg — 7万+ 经典公版书（EPUB）")
+                Label("全球搜索 — 含中文书籍，部分可下载", systemImage: "globe")
+                Label("Open Library — 英文开放书籍（EPUB）", systemImage: "archivebox")
+                Label("Gutenberg — 7万+ 经典公版书（EPUB）", systemImage: "book.pages")
             }
             .font(.caption)
             .foregroundStyle(.tertiary)
-            .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -98,6 +98,7 @@ struct OnlineBookRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // Cover
             AsyncImage(url: book.coverURL) { img in
                 img.resizable().aspectRatio(contentMode: .fill)
             } placeholder: {
@@ -108,6 +109,7 @@ struct OnlineBookRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
 
+            // Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(book.title)
                     .font(.system(size: 15, weight: .medium))
@@ -120,16 +122,18 @@ struct OnlineBookRow: View {
                 }
                 HStack(spacing: 6) {
                     if let year = book.year {
-                        Text("\(year)")
+                        Text(String(year))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
-                    Text(book.format)
-                        .font(.caption2)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15))
-                        .foregroundStyle(Color.accentColor)
-                        .clipShape(Capsule())
+                    if book.format != "-" {
+                        Text(book.format)
+                            .font(.caption2)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15))
+                            .foregroundStyle(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
                     Text(book.source.rawValue)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -138,24 +142,35 @@ struct OnlineBookRow: View {
 
             Spacer()
 
+            // Action
             if isLoading {
                 ProgressView()
-            } else {
+            } else if isImported {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(.green)
+            } else if book.canDownload {
                 Button(action: onDownload) {
-                    Image(systemName: isImported ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                    Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 26))
-                        .foregroundStyle(isImported ? .green : Color.accentColor)
+                        .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
-                .disabled(isImported)
+            } else {
+                Text("预览")
+                    .font(.caption2)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Color(.tertiarySystemFill))
+                    .foregroundStyle(.secondary)
+                    .clipShape(Capsule())
             }
         }
         .padding(.vertical, 6)
     }
 }
 
-// MARK: - CaseIterable for Source picker
+// MARK: - Source CaseIterable
 
 extension OnlineBook.Source: CaseIterable {
-    static var allCases: [OnlineBook.Source] { [.openLibrary, .gutenberg] }
+    static var allCases: [OnlineBook.Source] { [.googleBooks, .openLibrary, .gutenberg] }
 }

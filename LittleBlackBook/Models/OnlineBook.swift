@@ -13,7 +13,9 @@ struct OnlineBook: Identifiable, Sendable, Hashable {
     enum Source: String, Hashable {
         case openLibrary = "Open Library"
         case gutenberg   = "Gutenberg"
+        case googleBooks = "全球搜索"
     }
 
     var authorText: String { authors.joined(separator: ", ") }
+    var canDownload: Bool  { downloadURL != nil }
 }

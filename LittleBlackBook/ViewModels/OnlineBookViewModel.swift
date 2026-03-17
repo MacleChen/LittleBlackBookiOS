@@ -4,15 +4,20 @@ import SwiftUI
 final class OnlineBookViewModel: ObservableObject {
     @Published var openLibraryBooks: [OnlineBook] = []
     @Published var gutenbergBooks:   [OnlineBook] = []
-    @Published var searchText  = ""
-    @Published var selectedTab: OnlineBook.Source = .openLibrary
+    @Published var googleBooks:      [OnlineBook] = []
+    @Published var searchText   = ""
+    @Published var selectedTab: OnlineBook.Source = .googleBooks
     @Published var isSearching  = false
     @Published var isLoadingId: String? = nil
     @Published var errorMessage: String? = nil
     @Published var importedIds: Set<String> = []
 
     var displayedBooks: [OnlineBook] {
-        selectedTab == .openLibrary ? openLibraryBooks : gutenbergBooks
+        switch selectedTab {
+        case .googleBooks:  return googleBooks
+        case .openLibrary:  return openLibraryBooks
+        case .gutenberg:    return gutenbergBooks
+        }
     }
 
     func search() async {
@@ -22,32 +27,41 @@ final class OnlineBookViewModel: ObservableObject {
         errorMessage = nil
         openLibraryBooks = []
         gutenbergBooks   = []
-        async let olSearch  = searchOL(query: q)
-        async let gutSearch = searchGut(query: q)
-        _ = await (olSearch, gutSearch)
+        googleBooks      = []
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.searchGoogle(query: q) }
+            group.addTask { await self.searchOL(query: q) }
+            group.addTask { await self.searchGut(query: q) }
+        }
         isSearching = false
+    }
+
+    private func searchGoogle(query: String) async {
+        do {
+            googleBooks = try await OnlineBookService.shared.searchGoogleBooks(query: query)
+        } catch { /* silent — other sources may succeed */ }
     }
 
     private func searchOL(query: String) async {
         do {
             openLibraryBooks = try await OnlineBookService.shared.searchOpenLibrary(query: query)
-        } catch {
-            if openLibraryBooks.isEmpty { errorMessage = error.localizedDescription }
-        }
+        } catch { /* silent */ }
     }
 
     private func searchGut(query: String) async {
         do {
             gutenbergBooks = try await OnlineBookService.shared.searchGutenberg(query: query)
-        } catch {
-            if gutenbergBooks.isEmpty && openLibraryBooks.isEmpty {
-                errorMessage = error.localizedDescription
-            }
+        } catch { /* silent */ }
+
+        // After all searches done, show error only if everything is empty
+        if googleBooks.isEmpty && openLibraryBooks.isEmpty && gutenbergBooks.isEmpty {
+            errorMessage = "未找到相关书籍，请换个关键词试试"
         }
     }
 
     func downloadToLibrary(book: OnlineBook) async {
-        guard isLoadingId == nil else { return }
+        guard isLoadingId == nil, book.canDownload else { return }
         isLoadingId = book.id
         errorMessage = nil
         do {
