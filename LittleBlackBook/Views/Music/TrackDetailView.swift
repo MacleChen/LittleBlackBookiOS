@@ -107,7 +107,7 @@ struct TrackDetailView: View {
 
     private func statItem(value: String, label: String, icon: String) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 15)).foregroundStyle(.accentColor)
+            Image(systemName: icon).font(.system(size: 15)).foregroundStyle(Color.accentColor)
             Text(value).font(.system(size: 13, weight: .semibold))
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
