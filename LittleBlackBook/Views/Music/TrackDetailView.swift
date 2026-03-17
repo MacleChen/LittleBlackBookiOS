@@ -163,7 +163,7 @@ struct TrackDetailView: View {
                     .font(.headline)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(.accent).foregroundStyle(.white)
+            .background(Color.accentColor).foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
     }
