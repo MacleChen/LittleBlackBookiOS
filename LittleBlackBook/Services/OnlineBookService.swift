@@ -95,7 +95,7 @@ actor OnlineBookService {
         var comps = URLComponents(string: "https://openlibrary.org/search.json")!
         comps.queryItems = [
             .init(name: "q",      value: query),
-            .init(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,ia"),
+            .init(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,ia,has_fulltext"),
             .init(name: "limit",  value: "\(limit)"),
             .init(name: "page",   value: "\(page)")
         ]
@@ -113,8 +113,11 @@ actor OnlineBookService {
             let coverURL = doc.cover_i.flatMap {
                 URL(string: "https://covers.openlibrary.org/b/id/\($0)-L.jpg")
             }
+            // Use the first IA identifier; prefer the standard EPUB URL
             let iaId = doc.ia?.first(where: { !$0.isEmpty })
-            let epubURL = iaId.flatMap { URL(string: "https://archive.org/download/\($0)/\($0).epub") }
+            let epubURL = iaId.flatMap {
+                URL(string: "https://archive.org/download/\($0)/\($0).epub")
+            }
             return OnlineBook(
                 id: doc.key ?? UUID().uuidString,
                 title: doc.title ?? "未知书名",
@@ -182,7 +185,10 @@ actor OnlineBookService {
         if results.isEmpty { throw Err.noResults }
 
         return results.compactMap { book -> OnlineBook? in
-            let epubURL = book.formats["application/epub+zip"].flatMap { URL(string: $0) }
+            // Prefer the direct cache URL — avoids Gutenberg's redirect that often 403s
+            let cacheURL = URL(string: "https://www.gutenberg.org/cache/epub/\(book.id)/pg\(book.id).epub")
+            let fallbackURL = book.formats["application/epub+zip"].flatMap { URL(string: $0) }
+            let epubURL = cacheURL ?? fallbackURL
             guard epubURL != nil else { return nil }
             let coverURL = book.formats["image/jpeg"].flatMap { URL(string: $0) }
             let authors: [String] = (book.authors ?? []).map { a in
@@ -206,17 +212,91 @@ actor OnlineBookService {
 
     func downloadBook(book: OnlineBook) async throws -> URL {
         guard let downloadURL = book.downloadURL else { throw Err.noResults }
-        let (tmpFile, response) = try await URLSession.shared.download(from: downloadURL)
 
-        // Reject HTTP errors
+        let (tmpFile, response) = try await performDownload(url: downloadURL)
+
+        // Handle HTTP errors with source-specific retry and messages
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             try? FileManager.default.removeItem(at: tmpFile)
-            throw Err.network("服务器返回 \(http.statusCode)，文件不可用")
+
+            if http.statusCode == 403 {
+                // Gutenberg: try the -images / non-images variant
+                if book.source == .gutenberg, let altURL = gutenbergAlternativeURL(downloadURL) {
+                    if let result = try? await retryDownload(url: altURL, book: book) { return result }
+                }
+                // Archive.org: try _epub.epub suffix variant
+                if book.source == .openLibrary {
+                    let s = downloadURL.absoluteString
+                    if let altURL = URL(string: s.hasSuffix(".epub")
+                                        ? String(s.dropLast(5)) + "_epub.epub" : s) {
+                        if let result = try? await retryDownload(url: altURL, book: book) { return result }
+                    }
+                }
+            }
+
+            throw Err.network(errorMessage(for: http.statusCode, source: book.source))
         }
 
+        return try finalize(tmpFile: tmpFile, book: book)
+    }
+
+    // MARK: - Download helpers
+
+    private func performDownload(url: URL) async throws -> (URL, URLResponse) {
+        var req = URLRequest(url: url)
+        req.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent")
+        req.setValue("application/epub+zip, application/pdf, */*;q=0.8",
+                     forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 90
+        return try await URLSession.shared.download(for: req)
+    }
+
+    private func retryDownload(url: URL, book: OnlineBook) async throws -> URL {
+        let (file, resp) = try await performDownload(url: url)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            try? FileManager.default.removeItem(at: file)
+            throw Err.noResults
+        }
+        return try finalize(tmpFile: file, book: book)
+    }
+
+    /// For a Gutenberg cache URL pg{id}.epub, try pg{id}-images.epub (and vice-versa).
+    private func gutenbergAlternativeURL(_ url: URL) -> URL? {
+        let s = url.absoluteString
+        if s.hasSuffix(".epub") && !s.hasSuffix("-images.epub") {
+            return URL(string: s.dropLast(5) + "-images.epub")
+        }
+        if s.hasSuffix("-images.epub") {
+            return URL(string: String(s.dropLast("-images.epub".count)) + ".epub")
+        }
+        return nil
+    }
+
+    private func errorMessage(for status: Int, source: OnlineBook.Source) -> String {
+        switch status {
+        case 403:
+            switch source {
+            case .gutenberg:
+                return "Gutenberg 拒绝访问（403）。该书可能有版权限制，请前往 gutenberg.org 手动下载"
+            case .openLibrary:
+                return "该书需要登录 Internet Archive 账号才能借阅下载（403）"
+            case .douban:
+                return "豆瓣图书不提供直接下载（403）"
+            }
+        case 404:
+            return "下载链接已失效（404），该书籍文件已不存在"
+        default:
+            return "服务器返回 \(status)，下载失败"
+        }
+    }
+
+    private func finalize(tmpFile: URL, book: OnlineBook) throws -> URL {
         let ext = book.format.lowercased() == "pdf" ? "pdf" : "epub"
 
-        // Validate: EPUB/ZIP must start with PK magic bytes; PDF starts with %PDF
+        // Validate magic bytes
         if let fh = FileHandle(forReadingAtPath: tmpFile.path) {
             let magic = fh.readData(ofLength: 4)
             fh.closeFile()
