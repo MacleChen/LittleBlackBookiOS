@@ -8,6 +8,7 @@ struct LibraryView: View {
     @State private var showCategories = false
     @State private var readerBook: Book? = nil   // tap  → direct reading
     @State private var detailBook: Book? = nil   // context menu → detail sheet
+    @State private var showOnlineBooks = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)
@@ -37,6 +38,9 @@ struct LibraryView: View {
         .sheet(item: $detailBook) { book in
             BookDetailView(book: book)
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $showOnlineBooks) {
+            OnlineBookView()
         }
         .fileImporter(
             isPresented: $showImportPicker,
@@ -133,6 +137,12 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { showOnlineBooks = true } label: {
+                Image(systemName: "globe.badge.chevron.backward")
+                    .symbolRenderingMode(.hierarchical)
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 ForEach(LibraryViewModel.SortOption.allCases, id: \.self) { opt in

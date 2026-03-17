@@ -10,6 +10,7 @@ struct MusicView: View {
     @State private var showMusicCategories = false
     @State private var detailTrack: Track? = nil
     @State private var showPlayer   = false
+    @State private var showOnlineMusic = false
 
     // Supported audio types (natively playable on iOS)
     private let audioTypes: [UTType] = [
@@ -52,6 +53,9 @@ struct MusicView: View {
         }
         .sheet(isPresented: $showPlayer) {
             MusicPlayerView()
+        }
+        .sheet(isPresented: $showOnlineMusic) {
+            OnlineMusicView()
         }
         .fileImporter(
             isPresented: $showImportPicker,
@@ -168,6 +172,12 @@ struct MusicView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { showOnlineMusic = true } label: {
+                Image(systemName: "globe.badge.chevron.backward")
+                    .symbolRenderingMode(.hierarchical)
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 ForEach(MusicViewModel.SortOption.allCases, id: \.self) { opt in

@@ -42,6 +42,14 @@
 		AA000000000000000000001E /* BookReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001F /* BookReaderView.swift */; };
 		AA000000000000000000001F /* KGMDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000020 /* KGMDecryptor.swift */; };
 		AA0000000000000000000020 /* MusicCategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000021 /* MusicCategoriesView.swift */; };
+		AA0000000000000000000021 /* OnlineSong.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000022 /* OnlineSong.swift */; };
+		AA0000000000000000000022 /* OnlineBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000023 /* OnlineBook.swift */; };
+		AA0000000000000000000023 /* OnlineMusicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000024 /* OnlineMusicService.swift */; };
+		AA0000000000000000000024 /* OnlineBookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000025 /* OnlineBookService.swift */; };
+		AA0000000000000000000025 /* OnlineMusicViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000026 /* OnlineMusicViewModel.swift */; };
+		AA0000000000000000000026 /* OnlineBookViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000027 /* OnlineBookViewModel.swift */; };
+		AA0000000000000000000027 /* OnlineMusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000028 /* OnlineMusicView.swift */; };
+		AA0000000000000000000028 /* OnlineBookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000029 /* OnlineBookView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +87,14 @@
 		AB000000000000000000001F /* BookReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookReaderView.swift; sourceTree = "<group>"; };
 		AB0000000000000000000020 /* KGMDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KGMDecryptor.swift; sourceTree = "<group>"; };
 		AB0000000000000000000021 /* MusicCategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicCategoriesView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000022 /* OnlineSong.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineSong.swift; sourceTree = "<group>"; };
+		AB0000000000000000000023 /* OnlineBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineBook.swift; sourceTree = "<group>"; };
+		AB0000000000000000000024 /* OnlineMusicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMusicService.swift; sourceTree = "<group>"; };
+		AB0000000000000000000025 /* OnlineBookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineBookService.swift; sourceTree = "<group>"; };
+		AB0000000000000000000026 /* OnlineMusicViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMusicViewModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000027 /* OnlineBookViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineBookViewModel.swift; sourceTree = "<group>"; };
+		AB0000000000000000000028 /* OnlineMusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineMusicView.swift; sourceTree = "<group>"; };
+		AB0000000000000000000029 /* OnlineBookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineBookView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -133,6 +149,8 @@
 				AB0000000000000000000004 /* Category.swift */,
 				AB0000000000000000000013 /* Track.swift */,
 				AB0000000000000000000014 /* MusicCategory.swift */,
+				AB0000000000000000000022 /* OnlineSong.swift */,
+				AB0000000000000000000023 /* OnlineBook.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -143,6 +161,8 @@
 				AB0000000000000000000005 /* LibraryViewModel.swift */,
 				AB0000000000000000000006 /* CategoriesViewModel.swift */,
 				AB0000000000000000000017 /* MusicViewModel.swift */,
+				AB0000000000000000000026 /* OnlineMusicViewModel.swift */,
+				AB0000000000000000000027 /* OnlineBookViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -155,6 +175,7 @@
 				AD000000000000000000000C /* Detail */,
 				AD000000000000000000000D /* Reader */,
 				AD000000000000000000000E /* Music */,
+				AD0000000000000000000010 /* Online */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -167,6 +188,8 @@
 				AB0000000000000000000015 /* MusicStore.swift */,
 				AB0000000000000000000016 /* MusicPlayer.swift */,
 				AB0000000000000000000020 /* KGMDecryptor.swift */,
+				AB0000000000000000000024 /* OnlineMusicService.swift */,
+				AB0000000000000000000025 /* OnlineBookService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -237,6 +260,15 @@
 				AB0000000000000000000021 /* MusicCategoriesView.swift */,
 			);
 			path = Music;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000010 /* Online */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000028 /* OnlineMusicView.swift */,
+				AB0000000000000000000029 /* OnlineBookView.swift */,
+			);
+			path = Online;
 			sourceTree = "<group>";
 		};
 		AD000000000000000000000F /* Products */ = {
@@ -356,6 +388,14 @@
 				AA000000000000000000001E /* BookReaderView.swift in Sources */,
 				AA000000000000000000001F /* KGMDecryptor.swift in Sources */,
 				AA0000000000000000000020 /* MusicCategoriesView.swift in Sources */,
+				AA0000000000000000000021 /* OnlineSong.swift in Sources */,
+				AA0000000000000000000022 /* OnlineBook.swift in Sources */,
+				AA0000000000000000000023 /* OnlineMusicService.swift in Sources */,
+				AA0000000000000000000024 /* OnlineBookService.swift in Sources */,
+				AA0000000000000000000025 /* OnlineMusicViewModel.swift in Sources */,
+				AA0000000000000000000026 /* OnlineBookViewModel.swift in Sources */,
+				AA0000000000000000000027 /* OnlineMusicView.swift in Sources */,
+				AA0000000000000000000028 /* OnlineBookView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
