@@ -59,36 +59,50 @@ enum ReaderFont: String, CaseIterable {
     var label: String { switch self { case .system:"系统"; case .serif:"衬线"; case .rounded:"圆润" } }
 }
 
+// MARK: - Weak WKScriptMessageHandler wrapper (prevents retain cycle)
+
+private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ c: WKUserContentController, didReceive msg: WKScriptMessage) {
+        target?.userContentController(c, didReceive: msg)
+    }
+}
+
 // MARK: - Chapter ViewController (one per chapter page)
 
-final class ChapterVC: UIViewController, WKNavigationDelegate {
+final class ChapterVC: UIViewController, WKNavigationDelegate, WKScriptMessageHandler {
     var index: Int = 0
     private(set) var webView: WKWebView!
     private var chapterURL: URL?
     private var rootDir: URL?
     private var pendingCSS: String = ""
     var onTap: (() -> Void)?
+    var onPageUpdate: ((Int, Int) -> Void)?   // (currentPage, totalPages)
     var bgColor: UIColor = .white
 
     func configure(url: URL, rootDir: URL, css: String,
-                   bgColor: UIColor, onTap: @escaping () -> Void) {
-        self.chapterURL = url
-        self.rootDir    = rootDir
-        self.pendingCSS = css
-        self.bgColor    = bgColor
-        self.onTap      = onTap
-        if isViewLoaded {
-            applyBackground()
-            loadContent()
-        }
+                   bgColor: UIColor,
+                   onTap: @escaping () -> Void,
+                   onPageUpdate: @escaping (Int, Int) -> Void) {
+        self.chapterURL    = url
+        self.rootDir       = rootDir
+        self.pendingCSS    = css
+        self.bgColor       = bgColor
+        self.onTap         = onTap
+        self.onPageUpdate  = onPageUpdate
+        if isViewLoaded { applyBackground(); loadContent() }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         applyBackground()
 
-        let wv = WKWebView(frame: view.bounds)
-        wv.autoresizingMask  = [.flexibleWidth, .flexibleHeight]
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(WeakScriptHandler(self), name: "pageInfo")
+
+        let wv = WKWebView(frame: view.bounds, configuration: config)
+        wv.autoresizingMask   = [.flexibleWidth, .flexibleHeight]
         wv.navigationDelegate = self
         wv.isOpaque = false
         wv.scrollView.showsHorizontalScrollIndicator = false
@@ -103,8 +117,8 @@ final class ChapterVC: UIViewController, WKNavigationDelegate {
     }
 
     private func applyBackground() {
-        view.backgroundColor = bgColor
-        webView?.backgroundColor = bgColor
+        view.backgroundColor          = bgColor
+        webView?.backgroundColor      = bgColor
         webView?.scrollView.backgroundColor = bgColor
     }
 
@@ -115,10 +129,7 @@ final class ChapterVC: UIViewController, WKNavigationDelegate {
 
     func applyCSS(_ css: String, bgColor: UIColor? = nil) {
         pendingCSS = css
-        if let bg = bgColor {
-            self.bgColor = bg
-            if isViewLoaded { applyBackground() }
-        }
+        if let bg = bgColor { self.bgColor = bg; if isViewLoaded { applyBackground() } }
         guard isViewLoaded else { return }
         injectCSS()
     }
@@ -139,8 +150,44 @@ final class ChapterVC: UIViewController, WKNavigationDelegate {
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    // Inject scroll-position → page-number tracker
+    private func injectPageTracker() {
+        let js = """
+        (function(){
+          if (window._pageTrackerActive) return;
+          window._pageTrackerActive = true;
+          function report() {
+            var vh = window.innerHeight || 1;
+            var sh = Math.max(document.documentElement.scrollHeight,
+                              document.body.scrollHeight, vh);
+            var st = window.scrollY || 0;
+            var total   = Math.max(1, Math.ceil(sh / vh));
+            var current = Math.min(total, Math.floor(st / vh) + 1);
+            window.webkit.messageHandlers.pageInfo.postMessage(
+              {current: current, total: total}
+            );
+          }
+          window.addEventListener('scroll', report, {passive: true});
+          window.addEventListener('resize', report, {passive: true});
+          report();
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         injectCSS()
+        injectPageTracker()
+    }
+
+    // Receive page-info messages from JS
+    func userContentController(_ controller: WKUserContentController,
+                                didReceive message: WKScriptMessage) {
+        guard message.name == "pageInfo",
+              let body = message.body as? [String: Any],
+              let cur  = body["current"] as? Int,
+              let tot  = body["total"]   as? Int else { return }
+        DispatchQueue.main.async { self.onPageUpdate?(cur, tot) }
     }
 
     @objc private func didTap() { onTap?() }
@@ -150,11 +197,12 @@ final class ChapterVC: UIViewController, WKNavigationDelegate {
 
 struct PagedEPUBReader: UIViewControllerRepresentable {
     @Binding var chapterIndex: Int
-    let spineURLs:  [URL]
-    let rootDir:    URL
-    let css:        String
-    let bgColor:    UIColor
-    var onTap: () -> Void
+    let spineURLs:    [URL]
+    let rootDir:      URL
+    let css:          String
+    let bgColor:      UIColor
+    var onTap:        () -> Void
+    var onPageUpdate: (Int, Int) -> Void   // (currentPage, totalPages)
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -164,6 +212,7 @@ struct PagedEPUBReader: UIViewControllerRepresentable {
         pvc.view.backgroundColor = bgColor
         pvc.dataSource = context.coordinator
         pvc.delegate   = context.coordinator
+        context.coordinator.pageVC = pvc
         let vc = context.coordinator.chapterVC(for: chapterIndex)
         pvc.setViewControllers([vc], direction: .forward, animated: false)
         return pvc
@@ -190,6 +239,7 @@ struct PagedEPUBReader: UIViewControllerRepresentable {
                               UIPageViewControllerDelegate {
         var parent: PagedEPUBReader
         private var cache: [Int: ChapterVC] = [:]
+        weak var pageVC: UIPageViewController?
 
         init(_ parent: PagedEPUBReader) { self.parent = parent }
 
@@ -197,13 +247,20 @@ struct PagedEPUBReader: UIViewControllerRepresentable {
             if let cached = cache[index] { return cached }
             let vc = ChapterVC()
             vc.index = index
-            vc.configure(url: parent.spineURLs[index],
-                         rootDir: parent.rootDir,
-                         css: parent.css,
-                         bgColor: parent.bgColor,
-                         onTap: parent.onTap)
+            vc.configure(
+                url: parent.spineURLs[index],
+                rootDir: parent.rootDir,
+                css: parent.css,
+                bgColor: parent.bgColor,
+                onTap: parent.onTap,
+                onPageUpdate: { [weak self] cur, tot in
+                    guard let self,
+                          (self.pageVC?.viewControllers?.first as? ChapterVC)?.index == index
+                    else { return }
+                    self.parent.onPageUpdate(cur, tot)
+                }
+            )
             cache[index] = vc
-            // Keep cache small (max 5 chapters around current)
             evictDistant(from: index)
             return vc
         }
@@ -238,7 +295,11 @@ struct PagedEPUBReader: UIViewControllerRepresentable {
                                 transitionCompleted completed: Bool) {
             guard completed,
                   let vc = pvc.viewControllers?.first as? ChapterVC else { return }
-            DispatchQueue.main.async { self.parent.chapterIndex = vc.index }
+            DispatchQueue.main.async {
+                self.parent.chapterIndex = vc.index
+                // Reset to 1/1 until the new chapter's JS reports back
+                self.parent.onPageUpdate(1, 1)
+            }
         }
     }
 }
@@ -259,6 +320,8 @@ struct EPUBReaderView: View {
     @State private var showControls:   Bool = true
     @State private var showSettings:   Bool = false
     @State private var showCompletion: Bool = false
+    @State private var currentPage:    Int = 1
+    @State private var totalPages:     Int = 1
 
     private var totalChapters: Int { spineURLs.count }
     private var overallProgress: Double {
@@ -284,7 +347,11 @@ struct EPUBReaderView: View {
                         rootDir: dir,
                         css: settings.css,
                         bgColor: UIColor(settings.theme.uiBG),
-                        onTap: { showControls.toggle() }
+                        onTap: { showControls.toggle() },
+                        onPageUpdate: { cur, tot in
+                            currentPage = cur
+                            totalPages  = tot
+                        }
                     )
 
                     bottomBar
@@ -347,6 +414,7 @@ struct EPUBReaderView: View {
             Button {
                 guard chapterIndex > 0 else { return }
                 chapterIndex -= 1
+                currentPage = 1; totalPages = 1
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14))
@@ -356,16 +424,16 @@ struct EPUBReaderView: View {
 
             Spacer()
 
-            if totalChapters > 0 {
-                Text("第 \(chapterIndex + 1) / \(totalChapters) 章")
-                    .font(.system(size: 13, weight: .medium).monospacedDigit())
-            }
+            Text("\(currentPage) / \(totalPages)")
+                .font(.system(size: 13, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
 
             Spacer()
 
             Button {
                 if chapterIndex < totalChapters - 1 {
                     chapterIndex += 1
+                    currentPage = 1; totalPages = 1
                 } else {
                     showCompletion = true
                 }
