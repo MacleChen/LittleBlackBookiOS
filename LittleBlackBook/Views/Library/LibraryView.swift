@@ -28,7 +28,7 @@ struct LibraryView: View {
         .fullScreenCover(item: $readerBook) { book in
             EPUBReaderView(book: Binding(
                 get: { store.books.first(where: { $0.id == book.id }) ?? book },
-                set: { store.updateBook($0); readerBook = $0 }
+                set: { store.updateBook($0) }
             ))
             .environmentObject(store)
         }
