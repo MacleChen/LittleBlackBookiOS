@@ -16,10 +16,6 @@ struct ContentView: View {
                 MusicView()
                     .tabItem { Label("音乐", systemImage: "music.note.list") }
                     .environmentObject(musicStore)
-
-                CategoriesView()
-                    .tabItem { Label("分类", systemImage: "folder.fill") }
-                    .environmentObject(store)
             }
             .tint(.indigo)
             .safeAreaInset(edge: .bottom) {

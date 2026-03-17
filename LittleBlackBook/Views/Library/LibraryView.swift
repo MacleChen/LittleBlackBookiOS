@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject var store: BookStore
     @StateObject private var vm = LibraryViewModel()
     @State private var showImportPicker = false
+    @State private var showCategories = false
     @State private var readerBook: Book? = nil   // tap  → direct reading
     @State private var detailBook: Book? = nil   // context menu → detail sheet
 
@@ -111,10 +112,23 @@ struct LibraryView: View {
                         vm.selectedCategory = (vm.selectedCategory?.id == cat.id) ? nil : cat
                     }
                 }
+                Button { showCategories = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.badge.gearshape").font(.system(size: 12, weight: .medium))
+                        Text("管理").font(.system(size: 13, weight: .medium))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Color(.tertiarySystemFill))
+                    .foregroundStyle(.secondary)
+                    .clipShape(Capsule())
+                }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
         }
         .background(.ultraThinMaterial)
+        .sheet(isPresented: $showCategories) {
+            CategoriesView().environmentObject(store)
+        }
     }
 
     @ToolbarContentBuilder

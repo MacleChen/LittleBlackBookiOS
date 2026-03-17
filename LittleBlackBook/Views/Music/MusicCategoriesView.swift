@@ -1,17 +1,16 @@
 import SwiftUI
 
-struct CategoriesView: View {
-    @EnvironmentObject var store: BookStore
-    @StateObject private var vm = CategoriesViewModel()
+struct MusicCategoriesView: View {
+    @EnvironmentObject var musicStore: MusicStore
     @State private var showAddSheet = false
-    @State private var editingCategory: BookCategory? = nil
-    @State private var deletingCategory: BookCategory? = nil
+    @State private var editingCategory: MusicCategory? = nil
+    @State private var deletingCategory: MusicCategory? = nil
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(vm.categories) { cat in
-                    CategoryRow(category: cat, bookCount: vm.bookCount(for: cat))
+                ForEach(musicStore.categories) { cat in
+                    MusicCategoryRow(category: cat, trackCount: musicStore.trackCount(for: cat))
                         .contentShape(Rectangle())
                         .onTapGesture { editingCategory = cat }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -20,7 +19,6 @@ struct CategoriesView: View {
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
-
                             Button {
                                 editingCategory = cat
                             } label: {
@@ -29,16 +27,23 @@ struct CategoriesView: View {
                             .tint(.orange)
                         }
                 }
-                .onMove { vm.moveCategory(from: $0, to: $1) }
+                .onMove { source, destination in
+                    var cats = musicStore.categories
+                    cats.move(fromOffsets: source, toOffset: destination)
+                    for (i, var c) in cats.enumerated() {
+                        if c.sortOrder != i {
+                            c.sortOrder = i
+                            musicStore.updateCategory(c)
+                        }
+                    }
+                }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("书籍分类")
+            .navigationTitle("音乐分类")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showAddSheet = true
-                    } label: {
+                    Button { showAddSheet = true } label: {
                         Image(systemName: "plus.circle.fill")
                             .symbolRenderingMode(.hierarchical)
                             .font(.system(size: 22))
@@ -49,7 +54,7 @@ struct CategoriesView: View {
                 }
             }
             .overlay {
-                if vm.categories.isEmpty {
+                if musicStore.categories.isEmpty {
                     ContentUnavailableView(
                         "暂无分类",
                         systemImage: "folder.badge.plus",
@@ -59,21 +64,23 @@ struct CategoriesView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            CategoryFormView(mode: .add, onSave: { name, icon, color in
-                vm.addCategory(name: name, icon: icon, colorHex: color)
-            })
+            CategoryFormView(mode: .add) { name, icon, color in
+                let cat = MusicCategory(name: name, icon: icon, colorHex: color,
+                                        sortOrder: musicStore.categories.count)
+                musicStore.addCategory(cat)
+            }
         }
         .sheet(item: $editingCategory) { cat in
-            CategoryFormView(mode: .edit(name: cat.name, icon: cat.icon, colorHex: cat.colorHex), onSave: { name, icon, color in
+            CategoryFormView(mode: .edit(name: cat.name, icon: cat.icon, colorHex: cat.colorHex)) { name, icon, color in
                 var updated = cat
                 updated.name = name
                 updated.icon = icon
                 updated.colorHex = color
-                vm.updateCategory(updated)
-            })
+                musicStore.updateCategory(updated)
+            }
         }
         .confirmationDialog(
-            "确认删除「\(deletingCategory?.name ?? "")」？\n该分类下的书籍将移至未分类。",
+            "确认删除「\(deletingCategory?.name ?? "")」？\n该分类下的歌曲将移至未分类。",
             isPresented: Binding(
                 get: { deletingCategory != nil },
                 set: { if !$0 { deletingCategory = nil } }
@@ -81,7 +88,7 @@ struct CategoriesView: View {
             titleVisibility: .visible
         ) {
             Button("删除", role: .destructive) {
-                if let cat = deletingCategory { vm.deleteCategory(cat) }
+                if let cat = deletingCategory { musicStore.deleteCategory(cat) }
                 deletingCategory = nil
             }
             Button("取消", role: .cancel) { deletingCategory = nil }
@@ -89,11 +96,11 @@ struct CategoriesView: View {
     }
 }
 
-// MARK: - Category Row
+// MARK: - Music Category Row
 
-struct CategoryRow: View {
-    let category: BookCategory
-    let bookCount: Int
+struct MusicCategoryRow: View {
+    let category: MusicCategory
+    let trackCount: Int
 
     var body: some View {
         HStack(spacing: 14) {
@@ -109,7 +116,7 @@ struct CategoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.name)
                     .font(.system(size: 16, weight: .medium))
-                Text("\(bookCount) 本")
+                Text("\(trackCount) 首")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

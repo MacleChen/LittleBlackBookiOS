@@ -3,7 +3,7 @@ import SwiftUI
 struct CategoryFormView: View {
     enum Mode {
         case add
-        case edit(BookCategory)
+        case edit(name: String, icon: String, colorHex: String)
     }
 
     let mode: Mode
@@ -117,10 +117,10 @@ struct CategoryFormView: View {
     }
 
     private func populate() {
-        if case .edit(let cat) = mode {
-            name          = cat.name
-            selectedIcon  = cat.icon
-            selectedColor = cat.colorHex
+        if case .edit(let n, let i, let c) = mode {
+            name          = n
+            selectedIcon  = i
+            selectedColor = c
         }
     }
 
@@ -137,4 +137,5 @@ extension CategoryFormView.Mode {
         if case .add = self { return true }
         return false
     }
+    var title: String { isAdd ? "新建分类" : "编辑分类" }
 }
