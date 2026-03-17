@@ -116,6 +116,7 @@ final class MusicPlayer: NSObject, ObservableObject {
 
         currentTrack = track
         isPlaying = false
+        unsupportedFormatError = nil   // clear any previous error so the alert can fire again
 
         let ext = track.fileURL.pathExtension.lowercased()
 
@@ -140,16 +141,17 @@ final class MusicPlayer: NSObject, ObservableObject {
                 try decrypted.write(to: tmpURL)
 
                 await MainActor.run { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.currentTrack?.id == track.id else { return }
                     self.isDecrypting = false
                     self.tempDecryptedURL = tmpURL
                     self.startPlayback(url: tmpURL)
                 }
             } catch {
                 await MainActor.run { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.currentTrack?.id == track.id else { return }
                     self.isDecrypting = false
                     self.unsupportedFormatError = error.localizedDescription
+                    print("[KGM] Decryption error for \(track.title): \(error)")
                 }
             }
         }
@@ -158,7 +160,7 @@ final class MusicPlayer: NSObject, ObservableObject {
     /// Configure AVAudioPlayer and begin playback from a local URL.
     private func startPlayback(url: URL) {
         guard let p = try? AVAudioPlayer(contentsOf: url) else {
-            unsupportedFormatError = "无法播放该文件（格式不支持或文件已损坏）"
+            unsupportedFormatError = "无法播放该文件（格式不支持或文件已损坏）\n建议：请确认 KGM 文件来自酷狗音乐 App 且版本为 v3 加密格式"
             isPlaying = false
             return
         }
@@ -169,6 +171,13 @@ final class MusicPlayer: NSObject, ObservableObject {
         isPlaying = true
         duration  = p.duration
         currentTime = 0
+
+        // For KGM files that were imported with duration = 0, update it now
+        if var t = currentTrack, t.duration == 0, p.duration > 0 {
+            t.duration = p.duration
+            MusicStore.shared.updateTrack(t)
+            currentTrack = t
+        }
 
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in

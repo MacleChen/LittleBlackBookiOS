@@ -77,7 +77,18 @@ class MusicStore: ObservableObject {
 
         try fm.copyItem(at: sourceURL, to: destURL)
 
-        let meta = await extractMetadata(from: destURL)
+        // KGM/VPR files are encrypted — skip AVURLAsset (it can't read them)
+        let encryptedExts = ["kgm", "kgma", "vpr"]
+        let isEncrypted = encryptedExts.contains(destURL.pathExtension.lowercased())
+        let meta = isEncrypted
+            ? TrackMeta(
+                title:    destURL.deletingPathExtension().lastPathComponent,
+                artist:   "未知艺术家",
+                album:    "",
+                duration: 0,
+                artwork:  nil
+              )
+            : await extractMetadata(from: destURL)
 
         var artworkName: String? = nil
         if let img = meta.artwork, let jpeg = img.jpegData(compressionQuality: 0.85) {

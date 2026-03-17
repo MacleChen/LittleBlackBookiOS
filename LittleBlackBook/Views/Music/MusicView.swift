@@ -9,7 +9,6 @@ struct MusicView: View {
     @State private var showImportPicker = false
     @State private var detailTrack: Track? = nil
     @State private var showPlayer   = false
-    @State private var formatError: String? = nil
 
     // Supported audio types (natively playable on iOS)
     private let audioTypes: [UTType] = [
@@ -71,16 +70,13 @@ struct MusicView: View {
         } message: {
             Text(vm.importError ?? "")
         }
-        .alert("格式不支持", isPresented: Binding(
-            get: { formatError != nil },
-            set: { if !$0 { formatError = nil } }
+        .alert("播放失败", isPresented: Binding(
+            get: { player.unsupportedFormatError != nil },
+            set: { if !$0 { player.unsupportedFormatError = nil } }
         )) {
-            Button("确定", role: .cancel) { formatError = nil }
+            Button("确定", role: .cancel) { player.unsupportedFormatError = nil }
         } message: {
-            Text(formatError ?? "")
-        }
-        .onReceive(player.$unsupportedFormatError) { err in
-            if let err { formatError = err }
+            Text(player.unsupportedFormatError ?? "")
         }
     }
 
