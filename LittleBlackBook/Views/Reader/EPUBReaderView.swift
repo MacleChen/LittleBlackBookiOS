@@ -5,39 +5,53 @@ import ZIPFoundation
 // MARK: - Settings
 
 class ReaderSettings: ObservableObject {
-    @AppStorage("r_fontSize")   var fontSize:   Double = 20
-    @AppStorage("r_lineHeight") var lineHeight: Double = 1.5
+    @AppStorage("r_fontSize")   var fontSize:   Double = 18
+    @AppStorage("r_lineHeight") var lineHeight: Double = 1.6
     @AppStorage("r_theme")      var themeRaw:   String = ReaderTheme.white.rawValue
     @AppStorage("r_font")       var fontRaw:    String = ReaderFont.system.rawValue
     var theme: ReaderTheme { get { .init(rawValue: themeRaw) ?? .white } set { themeRaw = newValue.rawValue } }
     var font:  ReaderFont  { get { .init(rawValue: fontRaw)  ?? .system } set { fontRaw  = newValue.rawValue } }
 
-    var css: String {
+    // CSS for horizontal column-paginated layout
+    func css(pageWidth: CGFloat, pageHeight: CGFloat) -> String {
         let family: String
         switch font {
         case .system:  family = "-apple-system, 'PingFang SC', sans-serif"
         case .serif:   family = "Georgia, 'Songti SC', 'SimSun', serif"
         case .rounded: family = "-apple-system, 'PingFang SC', sans-serif"
         }
+        let pad: CGFloat = 20
+        let colW = pageWidth - pad * 2
         return """
-        html, body {
-          background-color: \(theme.bg) !important;
-          font-family: \(family) !important;
-          max-width: 700px;
-          margin: 0 auto;
-          padding: 20px 16px 60px;
+        html {
+          margin: 0; padding: 0;
+          height: \(Int(pageHeight))px;
+          overflow: hidden;
         }
-        body, body * {
-          font-size: \(fontSize)px !important;
-          line-height: \(lineHeight) !important;
-          color: \(theme.fg) !important;
-          background-color: \(theme.bg) !important;
+        body {
+          margin: 0;
+          padding: \(Int(pad))px \(Int(pad))px;
+          box-sizing: border-box;
+          height: \(Int(pageHeight))px;
+          overflow-x: scroll;
+          overflow-y: hidden;
+          -webkit-column-fill: auto;
+          column-fill: auto;
+          -webkit-column-width: \(Int(colW))px;
+          column-width: \(Int(colW))px;
+          -webkit-column-gap: \(Int(pad * 2))px;
+          column-gap: \(Int(pad * 2))px;
+          font-size: \(Int(fontSize))px;
+          line-height: \(lineHeight);
+          font-family: \(family);
+          color: \(theme.fg);
+          background: \(theme.bg);
+          word-wrap: break-word;
+          overflow-wrap: break-word;
         }
+        img { max-width: \(Int(colW))px !important; height: auto !important; display: block; }
+        a { color: \(theme.fg); }
         * { box-sizing: border-box; }
-        img, img * { max-width: 100% !important; height: auto !important;
-                     display: block; margin: 0 auto;
-                     background-color: transparent !important; }
-        a, a * { color: \(theme.fg) !important; }
         """
     }
 }
@@ -59,53 +73,69 @@ enum ReaderFont: String, CaseIterable {
     var label: String { switch self { case .system:"系统"; case .serif:"衬线"; case .rounded:"圆润" } }
 }
 
-// MARK: - Weak WKScriptMessageHandler wrapper (prevents retain cycle)
+// MARK: - Weak message handler wrapper
 
 private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     weak var target: WKScriptMessageHandler?
-    init(_ target: WKScriptMessageHandler) { self.target = target }
-    func userContentController(_ c: WKUserContentController, didReceive msg: WKScriptMessage) {
-        target?.userContentController(c, didReceive: msg)
+    init(_ t: WKScriptMessageHandler) { self.target = t }
+    func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
+        target?.userContentController(c, didReceive: m)
     }
 }
 
-// MARK: - Chapter ViewController (one per chapter page)
+// MARK: - Paginated Reader ViewController
 
-final class ChapterVC: UIViewController, WKNavigationDelegate, WKScriptMessageHandler {
-    var index: Int = 0
+final class PaginatedReaderVC: UIViewController,
+                                WKNavigationDelegate,
+                                WKScriptMessageHandler,
+                                UIScrollViewDelegate {
+
+    // Callbacks
+    var onTap:             (() -> Void)?
+    var onPageUpdate:      ((Int, Int) -> Void)?   // (current, total)
+    var onChapterBoundary: ((Int) -> Void)?        // delta: +1 or -1
+
+    // State
     private(set) var webView: WKWebView!
-    private var chapterURL: URL?
-    private var rootDir: URL?
-    private var pendingCSS: String = ""
-    var onTap: (() -> Void)?
-    var onPageUpdate: ((Int, Int) -> Void)?   // (currentPage, totalPages)
-    var bgColor: UIColor = .white
+    private var chapterURL:    URL?
+    private var rootDir:       URL?
+    private var pendingCSS:    String = ""
+    private var startAtEnd:    Bool   = false
 
-    func configure(url: URL, rootDir: URL, css: String,
-                   bgColor: UIColor,
-                   onTap: @escaping () -> Void,
-                   onPageUpdate: @escaping (Int, Int) -> Void) {
-        self.chapterURL    = url
-        self.rootDir       = rootDir
-        self.pendingCSS    = css
-        self.bgColor       = bgColor
-        self.onTap         = onTap
-        self.onPageUpdate  = onPageUpdate
-        if isViewLoaded { applyBackground(); loadContent() }
+    private var totalPageCount   = 1
+    private var currentPageIndex = 0   // 0-based
+    private var pageWidth: CGFloat { webView?.scrollView.frame.width ?? UIScreen.main.bounds.width }
+
+    var bgColor: UIColor = .white {
+        didSet {
+            view.backgroundColor               = bgColor
+            webView?.backgroundColor           = bgColor
+            webView?.scrollView.backgroundColor = bgColor
+        }
     }
+
+    // MARK: - Setup
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        applyBackground()
+        view.backgroundColor = bgColor
 
         let config = WKWebViewConfiguration()
-        config.userContentController.add(WeakScriptHandler(self), name: "pageInfo")
+        config.userContentController.add(WeakScriptHandler(self), name: "pagesReady")
 
         let wv = WKWebView(frame: view.bounds, configuration: config)
-        wv.autoresizingMask   = [.flexibleWidth, .flexibleHeight]
-        wv.navigationDelegate = self
-        wv.isOpaque = false
+        wv.autoresizingMask              = [.flexibleWidth, .flexibleHeight]
+        wv.navigationDelegate            = self
+        wv.isOpaque                      = false
+        wv.backgroundColor               = bgColor
+        wv.scrollView.backgroundColor    = bgColor
+        wv.scrollView.isPagingEnabled    = true
+        wv.scrollView.bounces            = false
+        wv.scrollView.alwaysBounceVertical   = false
+        wv.scrollView.alwaysBounceHorizontal = false
         wv.scrollView.showsHorizontalScrollIndicator = false
+        wv.scrollView.showsVerticalScrollIndicator   = false
+        wv.scrollView.delegate           = self
         view.addSubview(wv)
         self.webView = wv
 
@@ -113,29 +143,42 @@ final class ChapterVC: UIViewController, WKNavigationDelegate, WKScriptMessageHa
         tap.cancelsTouchesInView = false
         wv.addGestureRecognizer(tap)
 
-        loadContent()
+        if chapterURL != nil { loadContent() }
     }
 
-    private func applyBackground() {
-        view.backgroundColor          = bgColor
-        webView?.backgroundColor      = bgColor
-        webView?.scrollView.backgroundColor = bgColor
+    // MARK: - Public API
+
+    func loadChapter(url: URL, rootDir: URL, css: String, startAtEnd: Bool = false) {
+        self.chapterURL = url
+        self.rootDir    = rootDir
+        self.pendingCSS = css
+        self.startAtEnd = startAtEnd
+        currentPageIndex = 0
+        totalPageCount   = 1
+        if isViewLoaded { loadContent() }
     }
+
+    func updateCSS(_ css: String, bgColor: UIColor? = nil) {
+        pendingCSS = css
+        if let bg = bgColor { self.bgColor = bg }
+        guard isViewLoaded else { return }
+        injectCSS()
+        // Re-query page count after CSS update (layout may have changed)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.queryPageCount()
+        }
+    }
+
+    // MARK: - Private
 
     private func loadContent() {
         guard let url = chapterURL, let root = rootDir else { return }
+        webView.scrollView.setContentOffset(.zero, animated: false)
         webView.loadFileURL(url, allowingReadAccessTo: root)
     }
 
-    func applyCSS(_ css: String, bgColor: UIColor? = nil) {
-        pendingCSS = css
-        if let bg = bgColor { self.bgColor = bg; if isViewLoaded { applyBackground() } }
-        guard isViewLoaded else { return }
-        injectCSS()
-    }
-
     private func injectCSS() {
-        let escaped = pendingCSS
+        let esc = pendingCSS
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'",  with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
@@ -143,163 +186,150 @@ final class ChapterVC: UIViewController, WKNavigationDelegate, WKScriptMessageHa
         (function(){
           var e=document.getElementById('_rs'); if(e) e.remove();
           var s=document.createElement('style'); s.id='_rs';
-          s.textContent='\(escaped)';
+          s.textContent='\(esc)';
           (document.head||document.documentElement).appendChild(s);
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    // Inject scroll-position → page-number tracker
-    private func injectPageTracker() {
+    // Ask the WebView how many columns (pages) the content has after layout
+    private func queryPageCount() {
         let js = """
         (function(){
-          if (window._pageTrackerActive) return;
-          window._pageTrackerActive = true;
-          function report() {
-            var vh = window.innerHeight || 1;
-            var sh = Math.max(document.documentElement.scrollHeight,
-                              document.body.scrollHeight, vh);
-            var st = window.scrollY || 0;
-            var total   = Math.max(1, Math.ceil(sh / vh));
-            var current = Math.min(total, Math.floor(st / vh) + 1);
-            window.webkit.messageHandlers.pageInfo.postMessage(
-              {current: current, total: total}
-            );
-          }
-          window.addEventListener('scroll', report, {passive: true});
-          window.addEventListener('resize', report, {passive: true});
-          report();
+          var sw = document.documentElement.scrollWidth || document.body.scrollWidth || 1;
+          var vw = window.innerWidth || 1;
+          var total = Math.max(1, Math.round(sw / vw));
+          window.webkit.messageHandlers.pagesReady.postMessage({total: total});
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         injectCSS()
-        injectPageTracker()
+        // Wait briefly for CSS column layout to settle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.queryPageCount()
+        }
     }
 
-    // Receive page-info messages from JS
+    // WKScriptMessageHandler — receives total page count from JS
     func userContentController(_ controller: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
-        guard message.name == "pageInfo",
-              let body = message.body as? [String: Any],
-              let cur  = body["current"] as? Int,
-              let tot  = body["total"]   as? Int else { return }
-        DispatchQueue.main.async { self.onPageUpdate?(cur, tot) }
+        guard message.name == "pagesReady",
+              let body  = message.body as? [String: Any],
+              let total = body["total"] as? Int else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.totalPageCount = max(1, total)
+            if self.startAtEnd {
+                self.startAtEnd = false
+                let lastPage = self.totalPageCount - 1
+                let offset = CGFloat(lastPage) * self.pageWidth
+                self.webView.scrollView.setContentOffset(
+                    CGPoint(x: offset, y: 0), animated: false)
+                self.currentPageIndex = lastPage
+            }
+            self.onPageUpdate?(self.currentPageIndex + 1, self.totalPageCount)
+        }
+    }
+
+    // UIScrollViewDelegate — track current page while scrolling
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard pageWidth > 0 else { return }
+        let page = Int(scrollView.contentOffset.x / pageWidth)
+        let clamped = max(0, min(page, totalPageCount - 1))
+        if clamped != currentPageIndex {
+            currentPageIndex = clamped
+            onPageUpdate?(currentPageIndex + 1, totalPageCount)
+        }
+    }
+
+    // UIScrollViewDelegate — detect chapter-boundary swipe
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView,
+                                   withVelocity velocity: CGPoint,
+                                   targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        guard pageWidth > 0 else { return }
+        let targetPage = Int(round(targetContentOffset.pointee.x / pageWidth))
+
+        if velocity.x > 0 && currentPageIndex >= totalPageCount - 1 {
+            // Swiping forward past last page → request next chapter
+            DispatchQueue.main.async { self.onChapterBoundary?(+1) }
+        } else if velocity.x < 0 && currentPageIndex <= 0 && targetPage <= 0 {
+            // Swiping backward past first page → request prev chapter
+            DispatchQueue.main.async { self.onChapterBoundary?(-1) }
+        }
     }
 
     @objc private func didTap() { onTap?() }
 }
 
-// MARK: - UIPageViewController wrapper
+// MARK: - UIViewControllerRepresentable
 
-struct PagedEPUBReader: UIViewControllerRepresentable {
+struct PaginatedReaderView: UIViewControllerRepresentable {
     @Binding var chapterIndex: Int
-    let spineURLs:    [URL]
-    let rootDir:      URL
-    let css:          String
-    let bgColor:      UIColor
-    var onTap:        () -> Void
-    var onPageUpdate: (Int, Int) -> Void   // (currentPage, totalPages)
+    let spineURLs:     [URL]
+    let rootDir:       URL
+    let settings:      ReaderSettings
+    let bgColor:       UIColor
+    var onTap:         () -> Void
+    var onPageUpdate:  (Int, Int) -> Void
+    var onChapterChange: (Int) -> Void   // absolute new chapter index
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeUIViewController(context: Context) -> UIPageViewController {
-        let pvc = UIPageViewController(transitionStyle: .scroll,
-                                       navigationOrientation: .horizontal)
-        pvc.view.backgroundColor = bgColor
-        pvc.dataSource = context.coordinator
-        pvc.delegate   = context.coordinator
-        context.coordinator.pageVC = pvc
-        let vc = context.coordinator.chapterVC(for: chapterIndex)
-        pvc.setViewControllers([vc], direction: .forward, animated: false)
-        return pvc
+    func makeUIViewController(context: Context) -> PaginatedReaderVC {
+        let vc = PaginatedReaderVC()
+        vc.bgColor            = bgColor
+        vc.onTap              = onTap
+        vc.onPageUpdate       = onPageUpdate
+        vc.onChapterChange    = { [weak context] newIdx in
+            context?.coordinator.parent.onChapterChange(newIdx)
+        }
+        vc.onChapterBoundary  = { [weak context] delta in
+            guard let coord = context?.coordinator else { return }
+            let newIdx = coord.parent.chapterIndex + delta
+            guard newIdx >= 0 && newIdx < coord.parent.spineURLs.count else { return }
+            coord.parent.onChapterChange(newIdx)
+        }
+        context.coordinator.vc                 = vc
+        context.coordinator.loadedChapterIndex = chapterIndex
+        let sz = UIScreen.main.bounds
+        vc.loadChapter(url: spineURLs[chapterIndex],
+                       rootDir: rootDir,
+                       css: settings.css(pageWidth: sz.width, pageHeight: sz.height))
+        return vc
     }
 
-    func updateUIViewController(_ pvc: UIPageViewController, context: Context) {
+    func updateUIViewController(_ vc: PaginatedReaderVC, context: Context) {
         context.coordinator.parent = self
-        pvc.view.backgroundColor = bgColor
-        // Push updated CSS + bgColor to all cached VCs
-        context.coordinator.applyCSS(css, bgColor: bgColor)
-        // External navigation (bottom bar buttons) — sync UIPageViewController
-        guard let current = pvc.viewControllers?.first as? ChapterVC,
-              current.index != chapterIndex else { return }
-        let dir: UIPageViewController.NavigationDirection =
-            chapterIndex > current.index ? .forward : .reverse
-        let vc = context.coordinator.chapterVC(for: chapterIndex)
-        pvc.setViewControllers([vc], direction: dir, animated: true)
+        let sz   = UIScreen.main.bounds
+        let css  = settings.css(pageWidth: sz.width, pageHeight: sz.height)
+
+        // CSS / theme changed
+        vc.updateCSS(css, bgColor: bgColor)
+
+        // Chapter changed externally (bottom bar buttons)
+        let coord = context.coordinator
+        guard coord.loadedChapterIndex != chapterIndex else { return }
+        let goBack = chapterIndex < coord.loadedChapterIndex
+        coord.loadedChapterIndex = chapterIndex
+        vc.loadChapter(url: spineURLs[chapterIndex],
+                       rootDir: rootDir,
+                       css: css,
+                       startAtEnd: goBack)
     }
 
-    // MARK: Coordinator
+    final class Coordinator {
+        var parent: PaginatedReaderView
+        weak var vc: PaginatedReaderVC?
+        var loadedChapterIndex: Int
 
-    final class Coordinator: NSObject,
-                              UIPageViewControllerDataSource,
-                              UIPageViewControllerDelegate {
-        var parent: PagedEPUBReader
-        private var cache: [Int: ChapterVC] = [:]
-        weak var pageVC: UIPageViewController?
-
-        init(_ parent: PagedEPUBReader) { self.parent = parent }
-
-        func chapterVC(for index: Int) -> ChapterVC {
-            if let cached = cache[index] { return cached }
-            let vc = ChapterVC()
-            vc.index = index
-            vc.configure(
-                url: parent.spineURLs[index],
-                rootDir: parent.rootDir,
-                css: parent.css,
-                bgColor: parent.bgColor,
-                onTap: parent.onTap,
-                onPageUpdate: { [weak self] cur, tot in
-                    guard let self,
-                          (self.pageVC?.viewControllers?.first as? ChapterVC)?.index == index
-                    else { return }
-                    self.parent.onPageUpdate(cur, tot)
-                }
-            )
-            cache[index] = vc
-            evictDistant(from: index)
-            return vc
-        }
-
-        func applyCSS(_ css: String, bgColor: UIColor) {
-            cache.values.forEach { $0.applyCSS(css, bgColor: bgColor) }
-        }
-
-        private func evictDistant(from center: Int) {
-            let keep = Set((center - 2)...(center + 2))
-            cache.keys.filter { !keep.contains($0) }.forEach { cache.removeValue(forKey: $0) }
-        }
-
-        // DataSource
-        func pageViewController(_ pvc: UIPageViewController,
-                                viewControllerBefore vc: UIViewController) -> UIViewController? {
-            guard let c = vc as? ChapterVC, c.index > 0 else { return nil }
-            return chapterVC(for: c.index - 1)
-        }
-
-        func pageViewController(_ pvc: UIPageViewController,
-                                viewControllerAfter vc: UIViewController) -> UIViewController? {
-            guard let c = vc as? ChapterVC,
-                  c.index < parent.spineURLs.count - 1 else { return nil }
-            return chapterVC(for: c.index + 1)
-        }
-
-        // Delegate — update binding after swipe completes
-        func pageViewController(_ pvc: UIPageViewController,
-                                didFinishAnimating finished: Bool,
-                                previousViewControllers: [UIViewController],
-                                transitionCompleted completed: Bool) {
-            guard completed,
-                  let vc = pvc.viewControllers?.first as? ChapterVC else { return }
-            DispatchQueue.main.async {
-                self.parent.chapterIndex = vc.index
-                // Reset to 1/1 until the new chapter's JS reports back
-                self.parent.onPageUpdate(1, 1)
-            }
+        init(_ p: PaginatedReaderView) {
+            self.parent             = p
+            self.loadedChapterIndex = p.chapterIndex
         }
     }
 }
@@ -341,16 +371,25 @@ struct EPUBReaderView: View {
                         .opacity(showControls ? 1 : 0)
                         .allowsHitTesting(showControls)
 
-                    PagedEPUBReader(
+                    PaginatedReaderView(
                         chapterIndex: $chapterIndex,
-                        spineURLs: spineURLs,
-                        rootDir: dir,
-                        css: settings.css,
-                        bgColor: UIColor(settings.theme.uiBG),
-                        onTap: { showControls.toggle() },
+                        spineURLs:   spineURLs,
+                        rootDir:     dir,
+                        settings:    settings,
+                        bgColor:     UIColor(settings.theme.uiBG),
+                        onTap:       { showControls.toggle() },
                         onPageUpdate: { cur, tot in
                             currentPage = cur
                             totalPages  = tot
+                        },
+                        onChapterChange: { newIdx in
+                            if newIdx < totalChapters {
+                                chapterIndex = newIdx
+                                currentPage  = 1
+                                totalPages   = 1
+                            } else {
+                                showCompletion = true
+                            }
                         }
                     )
 
@@ -407,29 +446,33 @@ struct EPUBReaderView: View {
         .background(.ultraThinMaterial)
     }
 
-    // MARK: - Bottom bar
+    // MARK: - Bottom bar  (page counter + chapter nav)
 
     private var bottomBar: some View {
         HStack {
+            // Prev chapter
             Button {
                 guard chapterIndex > 0 else { return }
                 chapterIndex -= 1
                 currentPage = 1; totalPages = 1
             } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14))
+                Image(systemName: "chevron.left.2")
+                    .font(.system(size: 13))
                     .frame(width: 44, height: 36)
             }
             .disabled(chapterIndex == 0)
+            .foregroundStyle(chapterIndex == 0 ? .tertiary : .primary)
 
             Spacer()
 
-            Text("\(currentPage) / \(totalPages)")
+            // Page counter
+            Text("\(currentPage)  /  \(totalPages)")
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
 
             Spacer()
 
+            // Next chapter / finish
             Button {
                 if chapterIndex < totalChapters - 1 {
                     chapterIndex += 1
@@ -438,13 +481,15 @@ struct EPUBReaderView: View {
                     showCompletion = true
                 }
             } label: {
-                Image(systemName: chapterIndex < totalChapters - 1 ? "chevron.right" : "checkmark.circle")
-                    .font(.system(size: 14))
+                Image(systemName: chapterIndex < totalChapters - 1
+                      ? "chevron.right.2" : "checkmark.circle")
+                    .font(.system(size: 13))
                     .frame(width: 44, height: 36)
             }
+            .foregroundStyle(Color.accentColor)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(.ultraThinMaterial)
     }
 
@@ -466,7 +511,7 @@ struct EPUBReaderView: View {
         }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Load
+    // MARK: - Load book
 
     private func loadBook() async {
         do {
@@ -585,14 +630,12 @@ struct BookCompletionSheet: View {
                 VStack(spacing: 24) {
                     VStack(spacing: 8) {
                         Image(systemName: "book.closed.fill")
-                            .font(.system(size: 52))
-                            .foregroundStyle(.accent)
+                            .font(.system(size: 52)).foregroundStyle(.accent)
                         Text("读完了！").font(.title2.bold())
                         Text("《\(bookTitle)》")
                             .font(.subheadline).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 12)
+                    }.padding(.top, 12)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Label("读后感", systemImage: "pencil.line")
@@ -610,27 +653,20 @@ struct BookCompletionSheet: View {
                                     .foregroundStyle(Color(.placeholderText))
                                     .padding(16).allowsHitTesting(false)
                             }
-                        }
-                        .frame(minHeight: 200)
-                    }
-                    .padding(.horizontal, 20)
+                        }.frame(minHeight: 200)
+                    }.padding(.horizontal, 20)
 
                     VStack(spacing: 12) {
                         Button { onComplete(notes) } label: {
-                            Text("完成阅读")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.accentColor)
-                                .foregroundStyle(.white)
+                            Text("完成阅读").font(.headline)
+                                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Color.accentColor).foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         Button { dismiss() } label: {
                             Text("稍后再写").font(.subheadline).foregroundStyle(.secondary)
                         }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
+                    }.padding(.horizontal, 20).padding(.bottom, 24)
                 }
             }
             .navigationTitle("").navigationBarTitleDisplayMode(.inline)
@@ -648,8 +684,8 @@ struct BookCompletionSheet: View {
 struct ReaderSettingsPanel: View {
     @ObservedObject var settings: ReaderSettings
     private let sizes:       [Double] = [14, 16, 18, 20, 22, 24, 26]
-    private let lineHeights: [Double] = [1.0, 1.2, 1.5, 1.8, 2.0]
-    private let lineHeightLabels: [Double: String] = [1.0:"紧凑", 1.2:"标准", 1.5:"舒适", 1.8:"宽松", 2.0:"超宽"]
+    private let lineHeights: [Double] = [1.2, 1.4, 1.6, 1.8, 2.0]
+    private let lineLabels:  [Double: String] = [1.2:"紧凑", 1.4:"标准", 1.6:"舒适", 1.8:"宽松", 2.0:"超宽"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -681,7 +717,7 @@ struct ReaderSettingsPanel: View {
             HStack(spacing: 6) {
                 ForEach(lineHeights, id: \.self) { h in
                     Button { settings.lineHeight = h } label: {
-                        Text(lineHeightLabels[h] ?? "\(h)")
+                        Text(lineLabels[h] ?? "")
                             .font(.system(size: 12, weight: settings.lineHeight == h ? .bold : .regular))
                             .frame(maxWidth: .infinity).padding(.vertical, 7)
                             .background(settings.lineHeight == h ? Color.accentColor : Color(.tertiarySystemFill))
@@ -701,8 +737,7 @@ struct ReaderSettingsPanel: View {
                                     .overlay(Circle().stroke(
                                         settings.theme == t ? Color.accentColor : Color(.separator),
                                         lineWidth: settings.theme == t ? 2.5 : 1))
-                                Text("文").font(.system(size: 13))
-                                    .foregroundColor(Color(hex: t.fg))
+                                Text("文").font(.system(size: 13)).foregroundColor(Color(hex: t.fg))
                             }
                             Text(t.label).font(.system(size: 10))
                                 .foregroundStyle(settings.theme == t ? Color.accentColor : .secondary)
