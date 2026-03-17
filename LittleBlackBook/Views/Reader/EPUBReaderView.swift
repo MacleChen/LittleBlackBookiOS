@@ -9,10 +9,10 @@ typealias Color = SwiftUI.Color
 // MARK: - Settings
 
 class ReaderSettings: ObservableObject {
-    @AppStorage("r_fontSize")   var fontSize:    Double = 20
-    @AppStorage("r_lineHeight") var lineHeight:  Double = 1.5
-    @AppStorage("r_theme")      var themeRaw:    String = ReaderTheme.white.rawValue
-    @AppStorage("r_font")       var fontRaw:     String = ReaderFont.system.rawValue
+    @AppStorage("r_fontSize")   var fontSize:   Double = 20
+    @AppStorage("r_lineHeight") var lineHeight: Double = 1.5
+    @AppStorage("r_theme")      var themeRaw:   String = ReaderTheme.white.rawValue
+    @AppStorage("r_font")       var fontRaw:    String = ReaderFont.system.rawValue
     var theme: ReaderTheme { get { .init(rawValue: themeRaw) ?? .white } set { themeRaw = newValue.rawValue } }
     var font:  ReaderFont  { get { .init(rawValue: fontRaw)  ?? .system } set { fontRaw  = newValue.rawValue } }
 }
@@ -39,10 +39,11 @@ enum ReaderFont: String, CaseIterable {
 extension ReaderSettings {
     var readiumPreferences: EPUBPreferences {
         EPUBPreferences(
-            fontFamily:  readiumFontFamily,
-            fontSize:    fontSize / 20.0,   // 20 pt = 1.0 (100 %)
-            lineHeight:  lineHeight,
-            theme:       readiumTheme
+            fontFamily:     readiumFontFamily,
+            fontSize:       fontSize / 20.0,   // 20 pt = 1.0 (100 %)
+            lineHeight:     lineHeight,
+            publisherStyles: false,            // required for lineHeight / font overrides to apply
+            theme:          readiumTheme
         )
     }
 
@@ -71,17 +72,14 @@ final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigat
     @Published var currentLocator: Locator?
     @Published var currentPosition: Int = 0
     @Published var totalPositions: Int = 0
-    @Published var isBookFinished: Bool = false
+    @Published var isOnLastPage: Bool = false
 
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         currentLocator = locator
         if let p = locator.locations.totalProgression { currentProgress = p }
         if let pos = locator.locations.position {
             currentPosition = pos
-            // Mark finished when reaching the last page
-            if totalPositions > 0, pos >= totalPositions {
-                isBookFinished = true
-            }
+            isOnLastPage = totalPositions > 0 && pos >= totalPositions
         }
     }
 
@@ -92,13 +90,10 @@ final class EPUBReaderNavigatorDelegate: NSObject, ObservableObject, EPUBNavigat
 
 // MARK: - UIViewController host
 
-/// Embeds an existing UIViewController into SwiftUI.
 struct NavigatorHostView: UIViewControllerRepresentable {
     let viewController: EPUBNavigatorViewController
 
-    func makeUIViewController(context: Context) -> EPUBNavigatorViewController {
-        viewController
-    }
+    func makeUIViewController(context: Context) -> EPUBNavigatorViewController { viewController }
     func updateUIViewController(_ vc: EPUBNavigatorViewController, context: Context) {}
 }
 
@@ -112,11 +107,12 @@ struct EPUBReaderView: View {
     @StateObject private var settings    = ReaderSettings()
     @StateObject private var navDelegate = EPUBReaderNavigatorDelegate()
 
-    @State private var navigatorVC:      EPUBNavigatorViewController?
+    @State private var navigatorVC:       EPUBNavigatorViewController?
     @State private var openedPublication: Publication?
-    @State private var loadError:        String?
-    @State private var showControls:     Bool = true
-    @State private var showSettings:     Bool = false
+    @State private var loadError:         String?
+    @State private var showControls:      Bool = true
+    @State private var showSettings:      Bool = false
+    @State private var showCompletion:    Bool = false
 
     var body: some View {
         ZStack {
@@ -132,6 +128,16 @@ struct EPUBReaderView: View {
 
                     NavigatorHostView(viewController: vc)
                         .onTapGesture { showControls.toggle() }
+                        // Detect forward-swipe on last page to trigger completion
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 40)
+                                .onEnded { value in
+                                    guard navDelegate.isOnLastPage else { return }
+                                    if value.translation.width < -40 {
+                                        showCompletion = true
+                                    }
+                                }
+                        )
 
                     bottomBar
                         .opacity(showControls ? 1 : 0)
@@ -151,6 +157,13 @@ struct EPUBReaderView: View {
                 Task { await recomputePositions() }
             })
             .presentationDetents([.height(420)])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCompletion) {
+            BookCompletionSheet(bookTitle: book.title, existingNotes: book.notes) { notes in
+                finishBook(notes: notes)
+            }
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
     }
@@ -243,7 +256,6 @@ struct EPUBReaderView: View {
                 allowUserInteraction: false
             ).get()
 
-            // Compute total page count
             let total: Int
             if let positions = try? await publication.positionsByReadingOrder().get() {
                 total = positions.flatMap { $0 }.count
@@ -251,7 +263,6 @@ struct EPUBReaderView: View {
                 total = 0
             }
 
-            // Restore saved locator
             let savedLocator: Locator? = {
                 guard let json = UserDefaults.standard.string(forKey: "locator_\(book.id)") else { return nil }
                 return try? Locator(jsonString: json)
@@ -265,8 +276,8 @@ struct EPUBReaderView: View {
             vc.delegate = navDelegate
 
             await MainActor.run {
-                openedPublication          = publication
-                navDelegate.totalPositions = total
+                openedPublication           = publication
+                navDelegate.totalPositions  = total
                 navDelegate.currentProgress = book.readingProgress
                 navigatorVC = vc
             }
@@ -285,22 +296,133 @@ struct EPUBReaderView: View {
         }
     }
 
-    // ── Save ──────────────────────────────────────────────────────────────────
+    // ── Finish book (called from completion sheet) ─────────────────────────────
+
+    private func finishBook(notes: String) {
+        showCompletion = false
+        var b = book
+        b.isFinished      = true
+        b.finishedDate    = Date()
+        b.readingProgress = 1.0
+        b.lastReadDate    = Date()
+        b.notes           = notes
+        if let locator = navDelegate.currentLocator, let json = locator.jsonString {
+            UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
+        }
+        store.updateBook(b)
+        book = b
+        dismiss()
+    }
+
+    // ── Save on disappear ─────────────────────────────────────────────────────
 
     private func save() {
-        if let locator = navDelegate.currentLocator,
-           let json = locator.jsonString {
+        if let locator = navDelegate.currentLocator, let json = locator.jsonString {
             UserDefaults.standard.set(json, forKey: "locator_\(book.id)")
         }
         var b = book
         b.readingProgress = navDelegate.currentProgress
         b.lastReadDate    = Date()
-        if navDelegate.isBookFinished, !b.isFinished {
-            b.isFinished   = true
-            b.finishedDate = Date()
-        }
         store.updateBook(b)
         book = b
+    }
+}
+
+// MARK: - Completion Sheet
+
+struct BookCompletionSheet: View {
+    let bookTitle: String
+    let existingNotes: String
+    let onComplete: (String) -> Void
+
+    @State private var notes: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    init(bookTitle: String, existingNotes: String, onComplete: @escaping (String) -> Void) {
+        self.bookTitle     = bookTitle
+        self.existingNotes = existingNotes
+        self.onComplete    = onComplete
+        _notes = State(initialValue: existingNotes)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Image(systemName: "book.closed.fill")
+                            .font(.system(size: 52))
+                            .foregroundStyle(.accent)
+                        Text("读完了！")
+                            .font(.title2.bold())
+                        Text("《\(bookTitle)》")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 12)
+
+                    // Notes editor
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("读后感", systemImage: "pencil.line")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        ZStack(alignment: .topLeading) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.secondarySystemBackground))
+                            TextEditor(text: $notes)
+                                .scrollContentBackground(.hidden)
+                                .background(.clear)
+                                .padding(10)
+                                .frame(minHeight: 180)
+                            if notes.isEmpty {
+                                Text("写下你的读后感想…")
+                                    .foregroundStyle(Color(.placeholderText))
+                                    .padding(16)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .frame(minHeight: 200)
+                    }
+                    .padding(.horizontal, 20)
+
+                    // Buttons
+                    VStack(spacing: 12) {
+                        Button {
+                            onComplete(notes)
+                        } label: {
+                            Text("完成阅读")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("稍后再写")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("跳过") { dismiss() }
+                        .font(.subheadline)
+                }
+            }
+        }
     }
 }
 
@@ -311,7 +433,7 @@ struct ReaderSettingsPanel: View {
     var onChanged: (() -> Void)? = nil
     private let sizes:       [Double] = [14, 16, 18, 20, 22, 24, 26]
     private let lineHeights: [Double] = [1.0, 1.2, 1.5, 1.8, 2.0]
-    private let lineHeightLabels = [1.0: "紧凑", 1.2: "标准", 1.5: "舒适", 1.8: "宽松", 2.0: "超宽"]
+    private let lineHeightLabels: [Double: String] = [1.0:"紧凑", 1.2:"标准", 1.5:"舒适", 1.8:"宽松", 2.0:"超宽"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -328,11 +450,9 @@ struct ReaderSettingsPanel: View {
                     ForEach(sizes, id: \.self) { s in
                         Button { settings.fontSize = s; onChanged?() } label: {
                             Text("\(Int(s))")
-                                .font(.system(size: 11,
-                                              weight: settings.fontSize == s ? .bold : .regular))
+                                .font(.system(size: 11, weight: settings.fontSize == s ? .bold : .regular))
                                 .frame(width: 31, height: 31)
-                                .background(settings.fontSize == s
-                                            ? Color.accentColor : Color(.tertiarySystemFill))
+                                .background(settings.fontSize == s ? Color.accentColor : Color(.tertiarySystemFill))
                                 .foregroundStyle(settings.fontSize == s ? .white : .primary)
                                 .clipShape(Circle())
                         }.buttonStyle(.plain)
@@ -350,8 +470,7 @@ struct ReaderSettingsPanel: View {
                         Text(lineHeightLabels[h] ?? "\(h)")
                             .font(.system(size: 12, weight: settings.lineHeight == h ? .bold : .regular))
                             .frame(maxWidth: .infinity).padding(.vertical, 7)
-                            .background(settings.lineHeight == h
-                                        ? Color.accentColor : Color(.tertiarySystemFill))
+                            .background(settings.lineHeight == h ? Color.accentColor : Color(.tertiarySystemFill))
                             .foregroundStyle(settings.lineHeight == h ? .white : .primary)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }.buttonStyle(.plain)
@@ -386,8 +505,7 @@ struct ReaderSettingsPanel: View {
                     Button { settings.font = f; onChanged?() } label: {
                         Text(f.label).font(.system(size: 13, weight: .medium))
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
-                            .background(settings.font == f
-                                        ? Color.accentColor : Color(.tertiarySystemFill))
+                            .background(settings.font == f ? Color.accentColor : Color(.tertiarySystemFill))
                             .foregroundStyle(settings.font == f ? .white : .primary)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }.buttonStyle(.plain)

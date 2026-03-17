@@ -16,6 +16,7 @@ struct Book: Identifiable, Codable, Equatable {
     var finishedDate: Date?
     var isFavorite: Bool = false
     var tags: [String] = []
+    var notes: String = ""
 
     var coverImageURL: URL? {
         guard let name = coverImageName else { return nil }
