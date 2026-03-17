@@ -14,15 +14,88 @@ actor OnlineBookService {
         }
     }
 
-    // MARK: - Open Library (Internet Archive)
+    // MARK: - 豆瓣图书（覆盖中文书籍，含当代小说）
 
-    /// Searches Open Library broadly (not restricted to ebooks-only).
-    /// Books without an IA identifier are still shown but have downloadURL = nil.
-    func searchOpenLibrary(query: String, page: Int = 1, limit: Int = 20) async throws -> [OnlineBook] {
+    func searchDouban(query: String, start: Int = 0) async throws -> [OnlineBook] {
+        var comps = URLComponents(string: "https://book.douban.com/j/search_subjects")!
+        comps.queryItems = [
+            .init(name: "type",       value: "book"),
+            .init(name: "query",      value: query),
+            .init(name: "sort",       value: "rank"),
+            .init(name: "page_limit", value: "20"),
+            .init(name: "page_start", value: "\(start)")
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("https://book.douban.com",  forHTTPHeaderField: "Referer")
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                     forHTTPHeaderField: "User-Agent")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 15
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw Err.network("豆瓣 HTTP \(http.statusCode)")
+        }
+
+        let decoded = try JSONDecoder().decode(DoubanResp.self, from: data)
+        let subjects = decoded.subjects ?? []
+        if subjects.isEmpty { throw Err.noResults }
+
+        return subjects.map { s in
+            // abstract 通常格式: "作者 / 出版社 / 年份" 或 "作者 / 年份"
+            let parts = s.abstract?.components(separatedBy: " / ").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+            let author = parts.first ?? "未知作者"
+            let yearStr = parts.first(where: { $0.count >= 4 && Int($0.prefix(4)) != nil })
+            let year = yearStr.flatMap { Int($0.prefix(4)) }
+
+            let coverURL = s.cover.flatMap {
+                // Upgrade to HTTPS and use large cover
+                URL(string: $0.replacingOccurrences(of: "http://", with: "https://")
+                               .replacingOccurrences(of: "/m/", with: "/l/")
+                               .replacingOccurrences(of: "/s/", with: "/l/"))
+            }
+
+            return OnlineBook(
+                id: s.id ?? UUID().uuidString,
+                title: s.title ?? "未知书名",
+                authors: author.isEmpty ? [] : [author],
+                coverURL: coverURL,
+                year: year,
+                source: .douban,
+                downloadURL: nil,   // 豆瓣仅提供元数据，版权书无免费下载
+                format: "-"
+            )
+        }
+    }
+
+    // MARK: - Open Library + Archive.org（合并搜索可下载书籍）
+
+    /// Searches Open Library and Internet Archive Chinese texts in parallel,
+    /// returns combined results sorted so downloadable books come first.
+    func searchOpenLibrary(query: String, page: Int = 1, limit: Int = 15) async throws -> [OnlineBook] {
+        async let olBooks   = fetchOpenLibrary(query: query, page: page, limit: limit)
+        async let iaBooks   = fetchArchiveChinese(query: query, rows: 10)
+
+        var combined: [OnlineBook] = []
+        if let ol = try? await olBooks  { combined.append(contentsOf: ol) }
+        if let ia = try? await iaBooks  { combined.append(contentsOf: ia) }
+
+        // Deduplicate by title prefix
+        var seen = Set<String>()
+        combined = combined.filter { seen.insert($0.title.prefix(20).lowercased()).inserted }
+
+        // Downloadable first
+        combined.sort { $0.canDownload && !$1.canDownload }
+
+        if combined.isEmpty { throw Err.noResults }
+        return combined
+    }
+
+    private func fetchOpenLibrary(query: String, page: Int, limit: Int) async throws -> [OnlineBook] {
         var comps = URLComponents(string: "https://openlibrary.org/search.json")!
         comps.queryItems = [
             .init(name: "q",      value: query),
-            .init(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,ia,language"),
+            .init(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,ia"),
             .init(name: "limit",  value: "\(limit)"),
             .init(name: "page",   value: "\(page)")
         ]
@@ -31,19 +104,15 @@ actor OnlineBookService {
         req.timeoutInterval = 20
 
         let (data, resp) = try await URLSession.shared.data(for: req)
-        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw Err.network("HTTP \(http.statusCode)")
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw Err.noResults
         }
 
         let decoded = try JSONDecoder().decode(OLSearchResp.self, from: data)
-        let docs = decoded.docs ?? []
-        if docs.isEmpty { throw Err.noResults }
-
-        return docs.map { doc in
-            let coverURL: URL? = doc.cover_i.flatMap {
+        return (decoded.docs ?? []).map { doc in
+            let coverURL = doc.cover_i.flatMap {
                 URL(string: "https://covers.openlibrary.org/b/id/\($0)-L.jpg")
             }
-            // Build EPUB download URL if an Internet Archive ID exists
             let iaId = doc.ia?.first(where: { !$0.isEmpty })
             let epubURL = iaId.flatMap { URL(string: "https://archive.org/download/\($0)/\($0).epub") }
             return OnlineBook(
@@ -59,7 +128,39 @@ actor OnlineBookService {
         }
     }
 
-    // MARK: - Project Gutenberg (via Gutendex)
+    /// Search Internet Archive directly for Chinese-language texts.
+    private func fetchArchiveChinese(query: String, rows: Int) async throws -> [OnlineBook] {
+        var comps = URLComponents(string: "https://archive.org/advancedsearch.php")!
+        comps.queryItems = [
+            .init(name: "q",       value: "title:(\(query)) AND language:(Chinese) AND mediatype:(texts)"),
+            .init(name: "fl[]",    value: "identifier,title,creator,year"),
+            .init(name: "sort[]",  value: "downloads desc"),
+            .init(name: "rows",    value: "\(rows)"),
+            .init(name: "output",  value: "json")
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("LittleBlackBook/1.0 (personal)", forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 15
+
+        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return [] }
+        let decoded = try JSONDecoder().decode(IASearchResp.self, from: data)
+        return (decoded.response?.docs ?? []).compactMap { doc in
+            guard let identifier = doc.identifier, !identifier.isEmpty else { return nil }
+            let epubURL = URL(string: "https://archive.org/download/\(identifier)/\(identifier).epub")
+            return OnlineBook(
+                id: identifier,
+                title: doc.title ?? identifier,
+                authors: doc.creator.map { [$0] } ?? [],
+                coverURL: URL(string: "https://archive.org/services/img/\(identifier)"),
+                year: doc.year.flatMap { Int($0) },
+                source: .openLibrary,
+                downloadURL: epubURL,
+                format: "EPUB"
+            )
+        }
+    }
+
+    // MARK: - Project Gutenberg
 
     func searchGutenberg(query: String, page: Int = 1) async throws -> [OnlineBook] {
         var comps = URLComponents(string: "https://gutendex.com/books/")!
@@ -74,7 +175,7 @@ actor OnlineBookService {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw Err.network("HTTP \(http.statusCode)")
+            throw Err.network("Gutenberg HTTP \(http.statusCode)")
         }
 
         let decoded = try JSONDecoder().decode(GutendexResp.self, from: data)
@@ -102,63 +203,7 @@ actor OnlineBookService {
         }
     }
 
-    // MARK: - Google Books API (free, comprehensive, great for Chinese content)
-
-    func searchGoogleBooks(query: String, startIndex: Int = 0) async throws -> [OnlineBook] {
-        var comps = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")!
-        comps.queryItems = [
-            .init(name: "q",          value: query),
-            .init(name: "maxResults", value: "20"),
-            .init(name: "startIndex", value: "\(startIndex)"),
-            .init(name: "orderBy",    value: "relevance"),
-            .init(name: "printType",  value: "books")
-        ]
-        var req = URLRequest(url: comps.url!)
-        req.setValue("LittleBlackBook/1.0 (personal)", forHTTPHeaderField: "User-Agent")
-        req.timeoutInterval = 20
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw Err.network("HTTP \(http.statusCode)")
-        }
-
-        let decoded = try JSONDecoder().decode(GBSearchResp.self, from: data)
-        let items = decoded.items ?? []
-        if items.isEmpty { throw Err.noResults }
-
-        return items.map { item in
-            let info = item.volumeInfo
-            // Cover URL: upgrade to HTTPS and request larger size
-            let coverURL: URL? = (info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail)
-                .flatMap { URL(string: $0.replacingOccurrences(of: "http://", with: "https://")
-                                        .replacingOccurrences(of: "zoom=1", with: "zoom=2")) }
-
-            // Download link: prefer EPUB, fallback PDF
-            let epubLink = item.accessInfo?.epub?.downloadLink
-            let pdfLink  = item.accessInfo?.pdf?.downloadLink
-            let dlURL    = (epubLink ?? pdfLink).flatMap { URL(string: $0) }
-            let fmt: String
-            if epubLink != nil  { fmt = "EPUB" }
-            else if pdfLink != nil { fmt = "PDF" }
-            else { fmt = "-" }
-
-            // Parse year from publishedDate (e.g. "2012-01-01" or "2012")
-            let year = info.publishedDate.flatMap { Int($0.prefix(4)) }
-
-            return OnlineBook(
-                id: item.id,
-                title: info.title,
-                authors: info.authors ?? [],
-                coverURL: coverURL,
-                year: year,
-                source: .googleBooks,
-                downloadURL: dlURL,
-                format: fmt
-            )
-        }
-    }
-
-    // MARK: - Download book to temp → returns local URL
+    // MARK: - Download
 
     func downloadBook(book: OnlineBook) async throws -> URL {
         guard let downloadURL = book.downloadURL else { throw Err.noResults }
@@ -177,6 +222,19 @@ actor OnlineBookService {
     }
 }
 
+// MARK: - Douban models
+
+private struct DoubanResp: Codable {
+    let subjects: [DoubanSubject]?
+}
+private struct DoubanSubject: Codable {
+    let id: String?
+    let title: String?
+    let cover: String?
+    let abstract: String?
+    let url: String?
+}
+
 // MARK: - Open Library models
 
 private struct OLSearchResp: Codable {
@@ -190,7 +248,22 @@ private struct OLDoc: Codable {
     let cover_i: Int?
     let first_publish_year: Int?
     let ia: [String]?
-    let language: [String]?
+}
+
+// MARK: - Internet Archive Advanced Search models
+
+private struct IASearchResp: Codable {
+    let response: IAResponse?
+}
+private struct IAResponse: Codable {
+    let numFound: Int?
+    let docs: [IADoc]?
+}
+private struct IADoc: Codable {
+    let identifier: String?
+    let title: String?
+    let creator: String?
+    let year: String?
 }
 
 // MARK: - Gutendex models
@@ -209,35 +282,4 @@ private struct GutAuthor: Codable {
     let name: String
     let birth_year: Int?
     let death_year: Int?
-}
-
-// MARK: - Google Books models
-
-private struct GBSearchResp: Codable {
-    let items: [GBItem]?
-    let totalItems: Int?
-}
-private struct GBItem: Codable {
-    let id: String
-    let volumeInfo: GBVolumeInfo
-    let accessInfo: GBAccessInfo?
-}
-private struct GBVolumeInfo: Codable {
-    let title: String
-    let authors: [String]?
-    let publishedDate: String?
-    let imageLinks: GBImageLinks?
-    let language: String?
-}
-private struct GBImageLinks: Codable {
-    let thumbnail: String?
-    let smallThumbnail: String?
-}
-private struct GBAccessInfo: Codable {
-    let epub: GBFormat?
-    let pdf: GBFormat?
-}
-private struct GBFormat: Codable {
-    let isAvailable: Bool
-    let downloadLink: String?
 }

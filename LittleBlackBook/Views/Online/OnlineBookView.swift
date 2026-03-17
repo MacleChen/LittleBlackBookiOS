@@ -37,14 +37,27 @@ struct OnlineBookView: View {
     // MARK: - Source segment
 
     private var sourceSegment: some View {
-        Picker("来源", selection: $vm.selectedTab) {
-            ForEach(OnlineBook.Source.allCases, id: \.self) { src in
-                Text(src.rawValue).tag(src)
+        VStack(spacing: 0) {
+            Picker("来源", selection: $vm.selectedTab) {
+                ForEach(OnlineBook.Source.allCases, id: \.self) { src in
+                    Text(src.rawValue).tag(src)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            if let status = vm.currentStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Spacer().frame(height: 8)
             }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
         .background(.ultraThinMaterial)
     }
 
@@ -77,8 +90,8 @@ struct OnlineBookView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
             VStack(spacing: 4) {
-                Label("全球搜索 — 含中文书籍，部分可下载", systemImage: "globe")
-                Label("Open Library — 英文开放书籍（EPUB）", systemImage: "archivebox")
+                Label("豆瓣图书 — 中文书籍全覆盖（含当代小说）", systemImage: "globe")
+                Label("Open Library — 英文开放书籍 + 中文档案馆（EPUB）", systemImage: "archivebox")
                 Label("Gutenberg — 7万+ 经典公版书（EPUB）", systemImage: "book.pages")
             }
             .font(.caption)
@@ -172,5 +185,5 @@ struct OnlineBookRow: View {
 // MARK: - Source CaseIterable
 
 extension OnlineBook.Source: CaseIterable {
-    static var allCases: [OnlineBook.Source] { [.googleBooks, .openLibrary, .gutenberg] }
+    static var allCases: [OnlineBook.Source] { [.douban, .openLibrary, .gutenberg] }
 }
