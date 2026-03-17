@@ -71,7 +71,7 @@ struct BookDetailView: View {
             BookEditView(book: $book).environmentObject(store)
         }
         .fullScreenCover(isPresented: $showReader) {
-            EPUBReaderView(book: $book).environmentObject(store)
+            BookReaderView(book: $book).environmentObject(store)
         }
         .sheet(isPresented: $showNotes) {
             NotesEditorSheet(notes: $book.notes, onSave: { store.updateBook(book) })

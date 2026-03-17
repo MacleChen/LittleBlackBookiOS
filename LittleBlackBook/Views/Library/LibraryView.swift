@@ -26,7 +26,7 @@ struct LibraryView: View {
         }
         // Tap → open reader directly
         .fullScreenCover(item: $readerBook) { book in
-            EPUBReaderView(book: Binding(
+            BookReaderView(book: Binding(
                 get: { store.books.first(where: { $0.id == book.id }) ?? book },
                 set: { store.updateBook($0) }
             ))
@@ -39,7 +39,15 @@ struct LibraryView: View {
         }
         .fileImporter(
             isPresented: $showImportPicker,
-            allowedContentTypes: [UTType(filenameExtension: "epub") ?? .data],
+            allowedContentTypes: [
+                UTType(filenameExtension: "epub") ?? .data,
+                UTType(filenameExtension: "txt")  ?? .plainText,
+                UTType(filenameExtension: "pdf")  ?? .pdf,
+                UTType(filenameExtension: "mobi") ?? .data,
+                UTType(filenameExtension: "azw")  ?? .data,
+                UTType(filenameExtension: "azw3") ?? .data,
+                UTType(filenameExtension: "fb2")  ?? .data,
+            ],
             allowsMultipleSelection: true
         ) { result in
             switch result {
@@ -81,7 +89,7 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label("暂无书籍", systemImage: "books.vertical")
         } description: {
-            Text("点击右上角 + 按钮导入 EPUB 电子书")
+            Text("点击右上角 + 按钮导入 EPUB / TXT / PDF 电子书")
         } actions: {
             Button { showImportPicker = true } label: {
                 Label("导入书籍", systemImage: "square.and.arrow.down")

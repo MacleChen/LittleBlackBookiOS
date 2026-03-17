@@ -9,14 +9,25 @@ struct MusicView: View {
     @State private var showImportPicker = false
     @State private var detailTrack: Track? = nil
     @State private var showPlayer   = false
+    @State private var formatError: String? = nil
 
-    // Supported audio types
+    // Supported audio types (natively playable on iOS)
     private let audioTypes: [UTType] = [
         UTType(filenameExtension: "mp3")  ?? .audio,
         UTType(filenameExtension: "m4a")  ?? .audio,
         UTType(filenameExtension: "aac")  ?? .audio,
         UTType(filenameExtension: "wav")  ?? .audio,
         UTType(filenameExtension: "flac") ?? .audio,
+        UTType(filenameExtension: "aiff") ?? .audio,
+        UTType(filenameExtension: "aif")  ?? .audio,
+        UTType(filenameExtension: "caf")  ?? .audio,
+        UTType(filenameExtension: "alac") ?? .audio,
+        UTType(filenameExtension: "mp4")  ?? .audio,
+        UTType(filenameExtension: "opus") ?? .audio,
+        UTType(filenameExtension: "ogg")  ?? .audio,
+        // Note: KGM/NCM are DRM-encrypted formats and cannot be played by the system
+        UTType(filenameExtension: "kgm")  ?? .data,
+        UTType(filenameExtension: "ncm")  ?? .data,
     ]
 
     var body: some View {
@@ -59,6 +70,17 @@ struct MusicView: View {
             Button("确定", role: .cancel) { vm.importError = nil }
         } message: {
             Text(vm.importError ?? "")
+        }
+        .alert("格式不支持", isPresented: Binding(
+            get: { formatError != nil },
+            set: { if !$0 { formatError = nil } }
+        )) {
+            Button("确定", role: .cancel) { formatError = nil }
+        } message: {
+            Text(formatError ?? "")
+        }
+        .onReceive(player.$unsupportedFormatError) { err in
+            if let err { formatError = err }
         }
     }
 

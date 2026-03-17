@@ -30,6 +30,23 @@ struct Book: Identifiable, Codable, Equatable {
             .appendingPathComponent("Books")
             .appendingPathComponent(fileName)
     }
+
+    /// Detected format based on file extension
+    var format: BookFormat {
+        switch (fileName as NSString).pathExtension.lowercased() {
+        case "epub":        return .epub
+        case "txt":         return .txt
+        case "pdf":         return .pdf
+        case "mobi", "azw", "azw3": return .unsupported("MOBI/AZW")
+        case "cbz", "cbr":  return .unsupported("CBZ/CBR")
+        default:            return .unsupported((fileName as NSString).pathExtension.uppercased())
+        }
+    }
+}
+
+enum BookFormat {
+    case epub, txt, pdf
+    case unsupported(String)   // format name for the error message
 }
 
 extension FileManager {

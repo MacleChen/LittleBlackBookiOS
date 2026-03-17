@@ -37,6 +37,9 @@
 		AA0000000000000000000019 /* TrackDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001A /* TrackDetailView.swift */; };
 		AA000000000000000000001A /* MusicPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001B /* MusicPlayerView.swift */; };
 		AA000000000000000000001B /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001C /* MiniPlayerView.swift */; };
+		AA000000000000000000001C /* TXTReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001D /* TXTReaderView.swift */; };
+		AA000000000000000000001D /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001E /* PDFReaderView.swift */; };
+		AA000000000000000000001E /* BookReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000000000000000000001F /* BookReaderView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -69,6 +72,9 @@
 		AB000000000000000000001A /* TrackDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDetailView.swift; sourceTree = "<group>"; };
 		AB000000000000000000001B /* MusicPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerView.swift; sourceTree = "<group>"; };
 		AB000000000000000000001C /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001D /* TXTReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TXTReaderView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001E /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
+		AB000000000000000000001F /* BookReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookReaderView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -208,6 +214,9 @@
 			isa = PBXGroup;
 			children = (
 				AB000000000000000000000D /* EPUBReaderView.swift */,
+				AB000000000000000000001D /* TXTReaderView.swift */,
+				AB000000000000000000001E /* PDFReaderView.swift */,
+				AB000000000000000000001F /* BookReaderView.swift */,
 			);
 			path = Reader;
 			sourceTree = "<group>";
@@ -336,6 +345,9 @@
 				AA0000000000000000000019 /* TrackDetailView.swift in Sources */,
 				AA000000000000000000001A /* MusicPlayerView.swift in Sources */,
 				AA000000000000000000001B /* MiniPlayerView.swift in Sources */,
+				AA000000000000000000001C /* TXTReaderView.swift in Sources */,
+				AA000000000000000000001D /* PDFReaderView.swift in Sources */,
+				AA000000000000000000001E /* BookReaderView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

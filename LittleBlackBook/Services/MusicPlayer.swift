@@ -12,6 +12,7 @@ final class MusicPlayer: NSObject, ObservableObject {
     @Published var duration: TimeInterval = 0
     @Published var isShuffled: Bool = false
     @Published var repeatMode: RepeatMode = .none
+    @Published var unsupportedFormatError: String? = nil
 
     enum RepeatMode: String, CaseIterable {
         case none, one, all
@@ -111,7 +112,18 @@ final class MusicPlayer: NSObject, ObservableObject {
 
         currentTrack = track
 
+        // Check for known encrypted/unsupported formats before attempting AVAudioPlayer
+        let ext = track.fileURL.pathExtension.lowercased()
+        let encryptedFormats = ["kgm", "kgma", "vpr", "ncm"]
+        if encryptedFormats.contains(ext) {
+            unsupportedFormatError = ".\(ext.uppercased()) 是加密格式，暂不支持播放。请使用官方客户端转换后再导入。"
+            isPlaying = false
+            return
+        }
+
         guard let p = try? AVAudioPlayer(contentsOf: track.fileURL) else {
+            unsupportedFormatError = "无法播放该文件（格式不受支持或文件已损坏）"
+            isPlaying = false
             print("[MusicPlayer] Cannot load:", track.fileURL)
             return
         }

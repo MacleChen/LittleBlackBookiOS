@@ -76,7 +76,16 @@ class BookStore: ObservableObject {
 
         try fm.copyItem(at: sourceURL, to: destURL)
 
-        let meta = await EPUBMetadataParser.parse(url: destURL)
+        // Only use Readium parser for EPUB; other formats fall back to filename
+        let ext = destURL.pathExtension.lowercased()
+        let meta = (ext == "epub")
+            ? await EPUBMetadataParser.parse(url: destURL)
+            : EPUBMetadata(
+                title: destURL.deletingPathExtension().lastPathComponent,
+                author: "未知作者",
+                description: "",
+                coverImage: nil
+              )
 
         // Save cover
         var coverName: String? = nil
