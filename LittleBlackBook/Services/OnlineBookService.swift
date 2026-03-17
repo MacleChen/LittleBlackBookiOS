@@ -14,131 +14,77 @@ actor OnlineBookService {
         }
     }
 
-    // MARK: - 豆瓣图书（覆盖中文书籍，含当代小说）
-    // 使用 Frodo API（豆瓣 Android 端接口），比 Web 接口更稳定
-
-    private static let doubanApiKey = "0dad551ec0f1ed67e6ee46bc71a03db8"
+    // MARK: - 豆瓣图书
+    // 使用网站自带的 subject_suggest 接口，无需鉴权，稳定性最好
 
     func searchDouban(query: String, start: Int = 0) async throws -> [OnlineBook] {
-        // 先尝试 Frodo API（Authorization header 方式）
-        if let books = try? await searchDoubanFrodo(query: query, start: start), !books.isEmpty {
-            return books
-        }
-        // 回退：使用 v2 公开接口
-        return try await searchDoubanV2(query: query, start: start)
-    }
-
-    private func searchDoubanFrodo(query: String, start: Int) async throws -> [OnlineBook] {
-        var comps = URLComponents(string: "https://frodo.douban.com/api/v2/book/search")!
+        var comps = URLComponents(string: "https://book.douban.com/j/subject_suggest")!
         comps.queryItems = [
-            .init(name: "q",     value: query),
-            .init(name: "count", value: "20"),
-            .init(name: "start", value: "\(start)")
+            .init(name: "q",    value: query),
+            .init(name: "type", value: "b")   // b = book
         ]
         var req = URLRequest(url: comps.url!)
-        // apikey goes in Authorization header, not query string
-        req.setValue("Bearer \(Self.doubanApiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("https://book.douban.com", forHTTPHeaderField: "Referer")
         req.setValue(
-            "api-client/1 com.douban.frodo/7.22.0.beta2(230) Android/29 " +
-            "product/shamu vendor/motorola model/XT1085 rom/android brand/Android locale/zh_CN thread/1",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             forHTTPHeaderField: "User-Agent")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("zh_CN", forHTTPHeaderField: "Accept-Language")
-        req.timeoutInterval = 15
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw Err.noResults
-        }
-        let decoded = try JSONDecoder().decode(DoubanFrodoResp.self, from: data)
-        let subjects = decoded.subjects ?? []
-        if subjects.isEmpty { throw Err.noResults }
-        return subjects.map { doubanFrodoToBook($0) }
-    }
-
-    private func searchDoubanV2(query: String, start: Int) async throws -> [OnlineBook] {
-        var comps = URLComponents(string: "https://api.douban.com/v2/book/search")!
-        comps.queryItems = [
-            .init(name: "q",      value: query),
-            .init(name: "count",  value: "20"),
-            .init(name: "start",  value: "\(start)"),
-            .init(name: "apikey", value: Self.doubanApiKey)
-        ]
-        var req = URLRequest(url: comps.url!)
-        req.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) " +
-            "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-            forHTTPHeaderField: "User-Agent")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
+        req.setValue("application/json, text/javascript, */*", forHTTPHeaderField: "Accept")
+        req.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
+        req.timeoutInterval = 10
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw Err.network("豆瓣 HTTP \(http.statusCode)")
         }
-        let decoded = try JSONDecoder().decode(DoubanV2Resp.self, from: data)
-        let books = decoded.books ?? []
-        if books.isEmpty { throw Err.noResults }
-        return books.map { doubanV2ToBook($0) }
-    }
 
-    // MARK: - Mapping helpers
+        let items = try JSONDecoder().decode([DoubanSuggestItem].self, from: data)
+        if items.isEmpty { throw Err.noResults }
 
-    private func doubanFrodoToBook(_ s: DoubanFrodoSubject) -> OnlineBook {
-        let year = s.pubdate?.first.flatMap { Int($0.prefix(4)) }
-        let rawCover = s.pic?.large ?? s.pic?.normal ?? s.cover_url
-        let coverURL = rawCover.flatMap {
-            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
+        return items.compactMap { item -> OnlineBook? in
+            guard let title = item.title, !title.isEmpty else { return nil }
+
+            // Extract numeric ID from url like "/subject/1084336/"
+            let id = item.url?
+                .components(separatedBy: "/")
+                .first(where: { Int($0) != nil }) ?? UUID().uuidString
+
+            // sub_title format: "作者 / 出版社 / 年份"
+            let parts = (item.sub_title ?? "")
+                .components(separatedBy: "/")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            let author = parts.first ?? ""
+            let year = parts.compactMap { Int($0.prefix(4)) }.first
+
+            let coverURL = (item.cover_url ?? item.pic)
+                .flatMap { URL(string: $0.replacingOccurrences(of: "http://", with: "https://")) }
+
+            return OnlineBook(
+                id: id,
+                title: title,
+                authors: author.isEmpty ? [] : [author],
+                coverURL: coverURL,
+                year: year,
+                source: .douban,
+                downloadURL: nil,
+                format: "-"
+            )
         }
-        return OnlineBook(
-            id: s.id,
-            title: s.title,
-            authors: s.author ?? [],
-            coverURL: coverURL,
-            year: year,
-            source: .douban,
-            downloadURL: nil,
-            format: "-"
-        )
-    }
-
-    private func doubanV2ToBook(_ b: DoubanV2Book) -> OnlineBook {
-        let year = b.pubdate.flatMap { Int($0.prefix(4)) }
-        let coverURL = b.images?.large.flatMap {
-            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
-        } ?? b.image.flatMap {
-            URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
-        }
-        let authors = b.author ?? []
-        return OnlineBook(
-            id: b.id ?? UUID().uuidString,
-            title: b.title ?? "未知书名",
-            authors: authors,
-            coverURL: coverURL,
-            year: year,
-            source: .douban,
-            downloadURL: nil,
-            format: "-"
-        )
     }
 
     // MARK: - Open Library + Archive.org（合并搜索可下载书籍）
 
-    /// Searches Open Library and Internet Archive Chinese texts in parallel,
-    /// returns combined results sorted so downloadable books come first.
     func searchOpenLibrary(query: String, page: Int = 1, limit: Int = 15) async throws -> [OnlineBook] {
-        async let olBooks   = fetchOpenLibrary(query: query, page: page, limit: limit)
-        async let iaBooks   = fetchArchiveChinese(query: query, rows: 10)
+        async let olBooks = fetchOpenLibrary(query: query, page: page, limit: limit)
+        async let iaBooks = fetchArchiveChinese(query: query, rows: 10)
 
         var combined: [OnlineBook] = []
-        if let ol = try? await olBooks  { combined.append(contentsOf: ol) }
-        if let ia = try? await iaBooks  { combined.append(contentsOf: ia) }
+        if let ol = try? await olBooks { combined.append(contentsOf: ol) }
+        if let ia = try? await iaBooks { combined.append(contentsOf: ia) }
 
-        // Deduplicate by title prefix
         var seen = Set<String>()
         combined = combined.filter { seen.insert($0.title.prefix(20).lowercased()).inserted }
-
-        // Downloadable first
         combined.sort { $0.canDownload && !$1.canDownload }
 
         if combined.isEmpty { throw Err.noResults }
@@ -182,7 +128,6 @@ actor OnlineBookService {
         }
     }
 
-    /// Search Internet Archive directly for Chinese-language texts.
     private func fetchArchiveChinese(query: String, rows: Int) async throws -> [OnlineBook] {
         var comps = URLComponents(string: "https://archive.org/advancedsearch.php")!
         comps.queryItems = [
@@ -276,45 +221,17 @@ actor OnlineBookService {
     }
 }
 
-// MARK: - Douban v2 models (fallback API)
+// MARK: - Douban suggest models
 
-private struct DoubanV2Resp: Codable {
-    let books: [DoubanV2Book]?
-    let total: Int?
-    let count: Int?
-}
-private struct DoubanV2Book: Codable {
-    let id: String?
+private struct DoubanSuggestItem: Codable {
+    let type: String?
     let title: String?
-    let author: [String]?
-    let pubdate: String?
-    let image: String?
-    let images: DoubanV2Images?
-}
-private struct DoubanV2Images: Codable {
-    let small: String?
-    let medium: String?
-    let large: String?
-}
-
-// MARK: - Douban Frodo models
-
-private struct DoubanFrodoResp: Codable {
-    let subjects: [DoubanFrodoSubject]?
-    let total: Int?
-}
-private struct DoubanFrodoSubject: Codable {
-    let id: String
-    let title: String
-    let cover_url: String?      // direct cover URL (some API versions)
-    let pic: DoubanPic?         // nested cover object (newer API versions)
-    let author: [String]?
-    let pubdate: [String]?
-    let abstract: String?
-}
-private struct DoubanPic: Codable {
-    let normal: String?
-    let large: String?
+    let url: String?
+    let cover_url: String?   // some versions use cover_url
+    let pic: String?         // some versions use pic
+    let sub_title: String?
+    let id: String?
+    let year: String?
 }
 
 // MARK: - Open Library models
@@ -332,7 +249,7 @@ private struct OLDoc: Codable {
     let ia: [String]?
 }
 
-// MARK: - Internet Archive Advanced Search models
+// MARK: - Internet Archive models
 
 private struct IASearchResp: Codable {
     let response: IAResponse?
