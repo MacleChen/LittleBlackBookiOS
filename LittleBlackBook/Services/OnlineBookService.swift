@@ -122,30 +122,6 @@ actor OnlineBookService {
         )
     }
 
-
-        return subjects.map { s in
-            // pubdate is e.g. ["2005-1"] or ["1986"]
-            let year = s.pubdate?.first.flatMap { Int($0.prefix(4)) }
-
-            // cover: prefer large from pic object, fall back to cover_url
-            let rawCover = s.pic?.large ?? s.pic?.normal ?? s.cover_url
-            let coverURL = rawCover.flatMap {
-                URL(string: $0.replacingOccurrences(of: "http://", with: "https://"))
-            }
-
-            return OnlineBook(
-                id: s.id,
-                title: s.title,
-                authors: s.author ?? [],
-                coverURL: coverURL,
-                year: year,
-                source: .douban,
-                downloadURL: nil,   // 豆瓣仅提供元数据，版权书无免费下载
-                format: "-"
-            )
-        }
-    }
-
     // MARK: - Open Library + Archive.org（合并搜索可下载书籍）
 
     /// Searches Open Library and Internet Archive Chinese texts in parallel,
