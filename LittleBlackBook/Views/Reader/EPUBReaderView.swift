@@ -281,21 +281,18 @@ struct PaginatedReaderView: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIViewController(context: Context) -> PaginatedReaderVC {
-        let vc = PaginatedReaderVC()
-        vc.bgColor            = bgColor
-        vc.onTap              = onTap
-        vc.onPageUpdate       = onPageUpdate
-        vc.onChapterChange    = { [weak context] newIdx in
-            context?.coordinator.parent.onChapterChange(newIdx)
-        }
-        vc.onChapterBoundary  = { [weak context] delta in
-            guard let coord = context?.coordinator else { return }
+        let vc  = PaginatedReaderVC()
+        let coord = context.coordinator
+        vc.bgColor       = bgColor
+        vc.onTap         = onTap
+        vc.onPageUpdate  = onPageUpdate
+        vc.onChapterBoundary = { delta in
             let newIdx = coord.parent.chapterIndex + delta
             guard newIdx >= 0 && newIdx < coord.parent.spineURLs.count else { return }
             coord.parent.onChapterChange(newIdx)
         }
-        context.coordinator.vc                 = vc
-        context.coordinator.loadedChapterIndex = chapterIndex
+        coord.vc                 = vc
+        coord.loadedChapterIndex = chapterIndex
         let sz = UIScreen.main.bounds
         vc.loadChapter(url: spineURLs[chapterIndex],
                        rootDir: rootDir,
@@ -583,7 +580,10 @@ struct EPUBReaderView: View {
     }
 
     private func extractArchive(from source: URL, to dest: URL) throws {
-        guard let archive = Archive(url: source, accessMode: .read) else {
+        let archive: Archive
+        do {
+            archive = try Archive(url: source, accessMode: .read)
+        } catch {
             throw NSError(domain: "EPUBReader", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "无法打开书籍文件（ZIP 格式错误）"])
         }
