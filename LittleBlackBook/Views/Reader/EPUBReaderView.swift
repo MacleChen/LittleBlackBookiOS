@@ -12,46 +12,47 @@ class ReaderSettings: ObservableObject {
     var theme: ReaderTheme { get { .init(rawValue: themeRaw) ?? .white } set { themeRaw = newValue.rawValue } }
     var font:  ReaderFont  { get { .init(rawValue: fontRaw)  ?? .system } set { fontRaw  = newValue.rawValue } }
 
-    // CSS for horizontal column-paginated layout
-    func css(pageWidth: CGFloat, pageHeight: CGFloat) -> String {
+    // CSS for horizontal column-paginated layout.
+    // Uses viewport units (100vw / 100vh) so layout always matches the
+    // WKWebView's actual frame — no hardcoded screen dimensions needed.
+    var css: String {
         let family: String
         switch font {
         case .system:  family = "-apple-system, 'PingFang SC', sans-serif"
         case .serif:   family = "Georgia, 'Songti SC', 'SimSun', serif"
         case .rounded: family = "-apple-system, 'PingFang SC', sans-serif"
         }
-        let pad: CGFloat = 20
-        let colW = pageWidth - pad * 2
         return """
         html {
           margin: 0; padding: 0;
-          height: \(Int(pageHeight))px;
+          width: 100vw; height: 100vh;
           overflow: hidden;
         }
         body {
           margin: 0;
-          padding: \(Int(pad))px \(Int(pad))px;
+          padding: 24px 18px 40px;
           box-sizing: border-box;
-          height: \(Int(pageHeight))px;
+          width: 100vw; height: 100vh;
           overflow-x: scroll;
           overflow-y: hidden;
           -webkit-column-fill: auto;
           column-fill: auto;
-          -webkit-column-width: \(Int(colW))px;
-          column-width: \(Int(colW))px;
-          -webkit-column-gap: \(Int(pad * 2))px;
-          column-gap: \(Int(pad * 2))px;
+          -webkit-column-width: 100vw;
+          column-width: 100vw;
+          -webkit-column-gap: 0;
+          column-gap: 0;
           font-size: \(Int(fontSize))px;
           line-height: \(lineHeight);
           font-family: \(family);
           color: \(theme.fg);
-          background: \(theme.bg);
+          background-color: \(theme.bg);
           word-wrap: break-word;
           overflow-wrap: break-word;
         }
-        img { max-width: \(Int(colW))px !important; height: auto !important; display: block; }
-        a { color: \(theme.fg); }
-        * { box-sizing: border-box; }
+        img { max-width: 100% !important; height: auto !important;
+              display: block; margin: 0 auto; }
+        a   { color: \(theme.fg); }
+        *   { box-sizing: border-box; }
         """
     }
 }
@@ -115,6 +116,16 @@ final class PaginatedReaderVC: UIViewController,
     }
 
     // MARK: - Setup
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Re-query page count whenever the frame settles (covers initial layout
+        // and any safe-area / orientation changes)
+        guard isViewLoaded, chapterURL != nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.queryPageCount()
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -184,10 +195,21 @@ final class PaginatedReaderVC: UIViewController,
             .replacingOccurrences(of: "\n", with: "\\n")
         let js = """
         (function(){
-          var e=document.getElementById('_rs'); if(e) e.remove();
-          var s=document.createElement('style'); s.id='_rs';
-          s.textContent='\(esc)';
-          (document.head||document.documentElement).appendChild(s);
+          // Ensure viewport = device-width so 100vw == WKWebView frame width
+          var mv = document.querySelector('meta[name="viewport"]');
+          if (!mv) {
+            mv = document.createElement('meta');
+            mv.name = 'viewport';
+            (document.head || document.documentElement).insertBefore(mv, null);
+          }
+          mv.setAttribute('content',
+            'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+
+          // Inject reader CSS
+          var e = document.getElementById('_rs'); if (e) e.remove();
+          var s = document.createElement('style'); s.id = '_rs';
+          s.textContent = '\(esc)';
+          (document.head || document.documentElement).appendChild(s);
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -293,20 +315,17 @@ struct PaginatedReaderView: UIViewControllerRepresentable {
         }
         coord.vc                 = vc
         coord.loadedChapterIndex = chapterIndex
-        let sz = UIScreen.main.bounds
         vc.loadChapter(url: spineURLs[chapterIndex],
                        rootDir: rootDir,
-                       css: settings.css(pageWidth: sz.width, pageHeight: sz.height))
+                       css: settings.css)
         return vc
     }
 
     func updateUIViewController(_ vc: PaginatedReaderVC, context: Context) {
         context.coordinator.parent = self
-        let sz   = UIScreen.main.bounds
-        let css  = settings.css(pageWidth: sz.width, pageHeight: sz.height)
 
         // CSS / theme changed
-        vc.updateCSS(css, bgColor: bgColor)
+        vc.updateCSS(settings.css, bgColor: bgColor)
 
         // Chapter changed externally (bottom bar buttons)
         let coord = context.coordinator
@@ -315,7 +334,7 @@ struct PaginatedReaderView: UIViewControllerRepresentable {
         coord.loadedChapterIndex = chapterIndex
         vc.loadChapter(url: spineURLs[chapterIndex],
                        rootDir: rootDir,
-                       css: css,
+                       css: settings.css,
                        startAtEnd: goBack)
     }
 
