@@ -22,6 +22,7 @@ class ReaderSettings: ObservableObject {
         case .serif:   family = "Georgia, 'Songti SC', 'SimSun', serif"
         case .rounded: family = "-apple-system, 'PingFang SC', sans-serif"
         }
+        let lh = lineHeight
         return """
         html {
           margin: 0; padding: 0;
@@ -29,26 +30,20 @@ class ReaderSettings: ObservableObject {
           overflow: hidden;
         }
         body {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-          width: 100vw; height: 100vh;
-          overflow-x: scroll;
-          overflow-y: hidden;
-          -webkit-column-fill: auto;
-          column-fill: auto;
-          -webkit-column-width: 100vw;
-          column-width: 100vw;
-          -webkit-column-gap: 0;
-          column-gap: 0;
+          margin: 0; padding: 0;
+          height: 100vh;
+          overflow: visible;
+          -webkit-column-fill: auto; column-fill: auto;
+          -webkit-column-width: 100vw; column-width: 100vw;
+          -webkit-column-gap: 0; column-gap: 0;
           font-size: \(Int(fontSize))px;
-          line-height: \(lineHeight);
+          line-height: \(lh) !important;
           font-family: \(family);
           color: \(theme.fg);
           background-color: \(theme.bg);
-          word-wrap: break-word;
-          overflow-wrap: break-word;
+          word-wrap: break-word; overflow-wrap: break-word;
         }
+        body * { line-height: \(lh) !important; }
         img { max-width: 100% !important; height: auto !important;
               display: block; margin: 0 auto; }
         a   { color: \(theme.fg); }
@@ -173,9 +168,12 @@ final class PaginatedReaderVC: UIViewController,
         pendingCSS = css
         if let bg = bgColor { self.bgColor = bg }
         guard isViewLoaded else { return }
+        // Reset html width so it can be remeasured with new layout
+        webView.evaluateJavaScript(
+            "document.documentElement.style.width = '';", completionHandler: nil)
         injectCSS()
         // Re-query page count after CSS update (layout may have changed)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.queryPageCount()
         }
     }
@@ -211,6 +209,11 @@ final class PaginatedReaderVC: UIViewController,
           s.textContent = '\(esc)';
           (document.head || document.documentElement).appendChild(s);
 
+          // Strip inline line-height overrides so our CSS !important takes effect
+          document.querySelectorAll('*').forEach(function(el) {
+            if (el.style && el.style.lineHeight) el.style.lineHeight = '';
+          });
+
           // Wrap body children in a padded div for visual margins
           // (body itself must have padding:0 so CSS columns align with isPagingEnabled)
           var pw = document.getElementById('_pw');
@@ -226,15 +229,29 @@ final class PaginatedReaderVC: UIViewController,
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    // Ask the WebView how many columns (pages) the content has after layout
+    // Ask the WebView how many columns (pages) the content has after layout.
+    // Key: body has overflow:visible so body.scrollWidth = N * viewportWidth.
+    // We expand the html element to that width so WKWebView's scrollView.contentSize
+    // becomes N pages wide — this is what makes isPagingEnabled work.
+    // Retries up to 6x (150ms apart) waiting for CSS column layout to settle.
     private func queryPageCount() {
         let js = """
-        (function(){
-          var sw = document.documentElement.scrollWidth || document.body.scrollWidth || 1;
+        (function doMeasure(n) {
           var vw = window.innerWidth || 1;
-          var total = Math.max(1, Math.round(sw / vw));
-          window.webkit.messageHandlers.pagesReady.postMessage({total: total});
-        })();
+          var sw = document.body.scrollWidth || vw;
+          if (sw > vw) {
+            // Expand html element so WKWebView.scrollView.contentSize covers all pages
+            document.documentElement.style.width = sw + 'px';
+            var total = Math.max(1, Math.round(sw / vw));
+            window.webkit.messageHandlers.pagesReady.postMessage({total: total});
+            return;
+          }
+          if (n <= 0) {
+            window.webkit.messageHandlers.pagesReady.postMessage({total: 1});
+            return;
+          }
+          setTimeout(function(){ doMeasure(n - 1); }, 150);
+        })(6);
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
@@ -242,8 +259,8 @@ final class PaginatedReaderVC: UIViewController,
     // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         injectCSS()
-        // Wait briefly for CSS column layout to settle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        // Wait for CSS column layout to settle before measuring pages
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.queryPageCount()
         }
     }
