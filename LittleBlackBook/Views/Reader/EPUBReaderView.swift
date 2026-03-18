@@ -30,7 +30,7 @@ class ReaderSettings: ObservableObject {
         }
         body {
           margin: 0;
-          padding: 24px 18px 40px;
+          padding: 0;
           box-sizing: border-box;
           width: 100vw; height: 100vh;
           overflow-x: scroll;
@@ -150,7 +150,7 @@ final class PaginatedReaderVC: UIViewController,
         view.addSubview(wv)
         self.webView = wv
 
-        let tap = UITapGestureRecognizer(target: self, action: #selector(didTap))
+        let tap = UITapGestureRecognizer(target: self, action: #selector(didTap(_:)))
         tap.cancelsTouchesInView = false
         wv.addGestureRecognizer(tap)
 
@@ -210,6 +210,17 @@ final class PaginatedReaderVC: UIViewController,
           var s = document.createElement('style'); s.id = '_rs';
           s.textContent = '\(esc)';
           (document.head || document.documentElement).appendChild(s);
+
+          // Wrap body children in a padded div for visual margins
+          // (body itself must have padding:0 so CSS columns align with isPagingEnabled)
+          var pw = document.getElementById('_pw');
+          if (!pw) {
+            pw = document.createElement('div');
+            pw.id = '_pw';
+            pw.style.cssText = 'padding: 20px 18px 36px; box-sizing: border-box;';
+            while (document.body.firstChild) { pw.appendChild(document.body.firstChild); }
+            document.body.appendChild(pw);
+          }
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -285,7 +296,39 @@ final class PaginatedReaderVC: UIViewController,
         }
     }
 
-    @objc private func didTap() { onTap?() }
+    // MARK: - Programmatic page navigation
+
+    func goToNextPage() {
+        guard let wv = webView else { return }
+        if currentPageIndex < totalPageCount - 1 {
+            let offset = CGFloat(currentPageIndex + 1) * pageWidth
+            wv.scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: true)
+        } else {
+            onChapterBoundary?(+1)
+        }
+    }
+
+    func goToPrevPage() {
+        guard let wv = webView else { return }
+        if currentPageIndex > 0 {
+            let offset = CGFloat(currentPageIndex - 1) * pageWidth
+            wv.scrollView.setContentOffset(CGPoint(x: offset, y: 0), animated: true)
+        } else {
+            onChapterBoundary?(-1)
+        }
+    }
+
+    @objc private func didTap(_ r: UITapGestureRecognizer) {
+        let x = r.location(in: view).x
+        let w = view.bounds.width
+        if x < w / 3 {
+            goToPrevPage()
+        } else if x > w * 2 / 3 {
+            goToNextPage()
+        } else {
+            onTap?()
+        }
+    }
 }
 
 // MARK: - UIViewControllerRepresentable
@@ -462,51 +505,15 @@ struct EPUBReaderView: View {
         .background(.ultraThinMaterial)
     }
 
-    // MARK: - Bottom bar  (page counter + chapter nav)
+    // MARK: - Bottom bar  (page counter only)
 
     private var bottomBar: some View {
-        HStack {
-            // Prev chapter
-            Button {
-                guard chapterIndex > 0 else { return }
-                chapterIndex -= 1
-                currentPage = 1; totalPages = 1
-            } label: {
-                Image(systemName: "chevron.left.2")
-                    .font(.system(size: 13))
-                    .frame(width: 44, height: 36)
-            }
-            .disabled(chapterIndex == 0)
-            .foregroundStyle(chapterIndex == 0 ? .tertiary : .primary)
-
-            Spacer()
-
-            // Page counter
-            Text("\(currentPage)  /  \(totalPages)")
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            // Next chapter / finish
-            Button {
-                if chapterIndex < totalChapters - 1 {
-                    chapterIndex += 1
-                    currentPage = 1; totalPages = 1
-                } else {
-                    showCompletion = true
-                }
-            } label: {
-                Image(systemName: chapterIndex < totalChapters - 1
-                      ? "chevron.right.2" : "checkmark.circle")
-                    .font(.system(size: 13))
-                    .frame(width: 44, height: 36)
-            }
-            .foregroundStyle(Color.accentColor)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
+        Text("\(currentPage) / \(totalPages)")
+            .font(.system(size: 13, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
     }
 
     // MARK: - Utility views
